@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI CCD Wafer Inspection Simulator</title>
+<style>
+:root{--bg:#0b1220;--panel:#121d30;--panel2:#18263d;--line:#2b3d59;--text:#e8f0fb;--muted:#9eb0c9;--cyan:#52d5e8;--green:#4ade80;--red:#fb7185;--amber:#fbbf24}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#08101d,#101d32);color:var(--text);font:14px/1.45 Inter,Segoe UI,Arial,sans-serif}
+header{padding:22px 26px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:15px;margin:0 0 14px}p{margin:5px 0;color:var(--muted)}.sub{color:var(--muted)}
+.wrap{max-width:1500px;margin:auto;padding:20px;display:grid;grid-template-columns:1.15fr 1fr;gap:16px}
+.panel{background:rgba(18,29,48,.96);border:1px solid var(--line);border-radius:14px;padding:17px;box-shadow:0 10px 30px #0003}
+.wide{grid-column:1/-1}.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.between{justify-content:space-between}
+button,select,input{font:inherit}button{border:1px solid var(--line);background:#20324d;color:var(--text);padding:9px 13px;border-radius:9px;cursor:pointer}button:hover{filter:brightness(1.15)}button.primary{background:#087f98;border-color:#159cb6}button.good{background:#17633d;border-color:#268653}button.danger{background:#7d263a;border-color:#a83a52}button:disabled{opacity:.45;cursor:not-allowed}
+.pill{border:1px solid var(--line);border-radius:999px;padding:5px 10px;color:var(--muted);font-size:12px}.status{font-weight:700}.green{color:var(--green)}.red{color:var(--red)}.amber{color:var(--amber)}.cyan{color:var(--cyan)}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:9px;margin-top:14px}.metric{background:var(--panel2);padding:11px;border-radius:10px}.metric b{display:block;font-size:22px;margin-top:3px}.metric span{color:var(--muted);font-size:11px}
+.stage{display:grid;grid-template-columns:1fr 1fr;gap:12px}.screen{background:#050b13;border:1px solid #31445f;border-radius:10px;padding:10px;min-width:0}.screen canvas{display:block;width:100%;height:auto;border-radius:6px;background:#0c1725}.screen label{display:block;color:var(--muted);font-size:12px;margin-bottom:7px}
+.log{height:195px;overflow:auto;background:#08111e;border:1px solid var(--line);border-radius:9px;padding:10px;font:12px/1.6 Consolas,monospace}.log div{border-bottom:1px solid #18263a;padding:3px 0}.log time{color:#7086a4;margin-right:7px}
+.controls{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.field{display:flex;flex-direction:column;gap:5px}.field label{font-size:12px;color:var(--muted)}.field input,.field select{width:100%;background:#091525;border:1px solid var(--line);color:var(--text);padding:8px;border-radius:8px}
+input[type=range]{padding:0;accent-color:var(--cyan)}.toggle{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:12px}.toggle input{accent-color:var(--cyan)}
+table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:8px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted);font-weight:600}.tag{padding:3px 7px;border-radius:6px;font-size:11px;background:#24344c}.tag.ok{color:var(--green);background:#123524}.tag.ng{color:var(--red);background:#3c1924}.tag.skip{color:var(--amber);background:#3c3014}
+.pipeline{display:grid;grid-template-columns:repeat(5,1fr);gap:7px}.step{border:1px solid var(--line);background:#0c1727;border-radius:9px;padding:10px;text-align:center;color:var(--muted);font-size:12px}.step b{display:block;color:var(--text);margin-bottom:4px}.step.active{border-color:var(--cyan);box-shadow:0 0 0 1px var(--cyan) inset;color:var(--cyan)}.step.done{border-color:#287a50;color:var(--green)}
+.small{font-size:11px;color:var(--muted)}.note{border-left:3px solid var(--amber);padding:8px 11px;background:#2a2416;color:#e9d8a6;border-radius:5px;font-size:12px}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}.wide{grid-column:auto}.metrics{grid-template-columns:repeat(2,1fr)}}@media(max-width:540px){.stage,.controls{grid-template-columns:1fr}.pipeline{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(2,1fr)}header{padding:16px}}
+</style>
+</head>
+<body>
+<header>
+ <div><h1>AI CCD Wafer Inspection Simulator</h1><div class="sub">One-image-per-wafer trigger mode · Robot-pad residue detection · Training/demo only</div></div>
+ <div class="row"><span class="pill">SIMULATION</span><span class="pill">No real machine connection</span></div>
+</header>
+<main class="wrap">
+ <section class="panel">
+  <div class="row between"><h2>Inspection station</h2><span id="machineState" class="status amber">IDLE</span></div>
+  <div class="pipeline" id="pipeline">
+   <div class="step" data-step="0"><b>01 · Wafer</b>Arrives</div>
+   <div class="step" data-step="1"><b>02 · Trigger</b>Request check</div>
+   <div class="step" data-step="2"><b>03 · CCD</b>Image capture</div>
+   <div class="step" data-step="3"><b>04 · AI Vision</b>Pad inspection</div>
+   <div class="step" data-step="4"><b>05 · Result</b>OK / NG</div>
+  </div>
+  <div class="stage" style="margin-top:14px">
+   <div class="screen"><label>CCD CAMERA · ROBOT PAD IMAGE</label><canvas id="cameraView" width="640" height="420"></canvas><div class="small" id="cameraInfo">No image captured yet</div></div>
+   <div class="screen"><label>AI VISION · DETECTION OVERLAY</label><canvas id="aiView" width="640" height="420"></canvas><div class="small" id="aiInfo">Waiting for captured image</div></div>
+  </div>
+  <div class="metrics">
+   <div class="metric"><span>WAFERS PROCESSED</span><b id="mTotal">0</b></div>
+   <div class="metric"><span>IMAGES CAPTURED</span><b id="mCaptured">0</b></div>
+   <div class="metric"><span>AI DEFECTS FOUND</span><b id="mDefects" class="red">0</b></div>
+   <div class="metric"><span>TRIGGER SKIPPED</span><b id="mSkipped">0</b></div>
+  </div>
+  <div class="row" style="margin-top:14px">
+   <button class="primary" id="startBtn">▶ Start automatic run</button>
+   <button id="singleBtn">＋ Process one wafer</button>
+   <button id="pauseBtn" disabled>Ⅱ Pause</button>
+   <button class="danger" id="resetBtn">↻ Reset</button>
+  </div>
+  <p class="small">Automatic run generates a new wafer at the selected interval. You can also process wafers one at a time.</p>
+ </section>
+ <section class="panel">
+  <div class="row between"><h2>Camera control panel</h2><span class="pill cyan">CCD UI</span></div>
+  <div class="controls">
+   <div class="field"><label>Camera status</label><select id="camStatus"><option value="connected">Connected (simulated)</option><option value="disconnected">Disconnected</option></select></div>
+   <div class="field"><label>Capture mode</label><select id="captureMode"><option value="trigger">Hardware / software trigger</option><option value="continuous">Continuous preview (demo)</option></select></div>
+   <div class="field"><label>Resolution</label><select id="resolution"><option>4096 × 2160</option><option selected>3072 × 2048</option><option>2448 × 2040</option><option>1920 × 1080</option></select></div>
+   <div class="field"><label>Interface</label><select id="interface"><option>GigE</option><option selected>USB 3.0</option><option>USB</option></select></div>
+   <div class="field"><label>Exposure (ms): <b id="exposureVal">8</b></label><input id="exposure" type="range" min="1" max="40" value="8"></div>
+   <div class="field"><label>Gain: <b id="gainVal">1.0×</b></label><input id="gain" type="range" min="1" max="30" value="10"></div>
+   <div class="field"><label>Wafer interval (ms)</label><select id="interval"><option value="900">900 ms</option><option value="1800" selected>1800 ms</option><option value="3000">3000 ms</option></select></div>
+   <div class="field"><label>Frame rate (FPS)</label><select id="fps"><option>12</option><option>21</option><option selected>30</option><option>60</option></select></div>
+   <div class="field"><label>AI confidence threshold: <b id="thresholdVal">70%</b></label><input id="threshold" type="range" min="40" max="99" value="70"></div>
+   <div class="field"><label>Trigger probability: <b id="triggerVal">50%</b></label><input id="triggerProb" type="range" min="0" max="100" value="50"></div>
+   <div class="field"><label>Defect override probability: <b id="overrideVal">8%</b></label><input id="overrideProb" type="range" min="0" max="40" value="8"></div>
+  </div>
+  <div class="row" style="margin-top:13px">
+   <label class="toggle"><input type="checkbox" id="autoStop" checked> Stop machine on confirmed defect (simulation)</label>
+   <label class="toggle"><input type="checkbox" id="sound"> Beep on NG</label>
+  </div>
+  <div class="note" style="margin-top:13px">The camera controls here are simulated UI controls. They do not connect to or configure a physical CCD camera.</div>
+ </section>
+ <section class="panel">
+  <div class="row between"><h2>Trigger and AI logic</h2><span class="pill">Per-wafer decision</span></div>
+  <p><b>Trigger request:</b> A random machine-side trigger request is generated using the selected probability (default 50%). If there is no request, the CCD normally skips that wafer.</p>
+  <p><b>Defect override:</b> A separate simulated upstream warning can force an image capture even when the normal trigger request is absent. This represents an independent sensor/interlock—not AI detecting a defect without an image.</p>
+  <p><b>AI inspection:</b> After capture, the external AI model examines the generated image and classifies the robot pad as normal or abnormal.</p>
+  <div class="note">Important: AI cannot inspect a camera image that was never captured. In a real system, use a machine signal or independent sensor to request/force capture; then run image-based AI on the captured image.</div>
+ </section>
+ <section class="panel">
+  <div class="row between"><h2>Event log</h2><button id="clearLog">Clear log</button></div>
+  <div class="log" id="log" aria-live="polite"></div>
+ </section>
+ <section class="panel wide">
+  <div class="row between"><h2>Wafer inspection history</h2><span class="small">Latest 20 records shown</span></div>
+  <div style="overflow:auto"><table><thead><tr><th>Wafer</th><th>Trigger request</th><th>Capture</th><th>AI result</th><th>Confidence</th><th>Defect score</th><th>Action</th></tr></thead><tbody id="history"></tbody></table></div>
+ </section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let total=0,captured=0,defects=0,skipped=0,waferNo=0,running=false,paused=false,timer=null,busy=false,history=[];
+let lastImage=null;
+function log(msg,kind=''){const d=document.createElement('div');const t=new Date().toLocaleTimeString();d.innerHTML=`<time>${t}</time><span class="${kind}">${msg}</span>`;$('log').prepend(d);}
+function metrics(){$('mTotal').textContent=total;$('mCaptured').textContent=captured;$('mDefects').textContent=defects;$('mSkipped').textContent=skipped;}
+function state(s,cls='amber'){$('machineState').textContent=s;$('machineState').className='status '+cls;}
+function pipeline(n){document.querySelectorAll('.step').forEach((e,i)=>{e.classList.toggle('active',i===n);e.classList.toggle('done',i<n);});}
+function rand(p){return Math.random()*100<p;}
+function makePad(defect,exposure=8,gain=1){
+ const c=$('cameraView'),x=c.getContext('2d');x.clearRect(0,0,c.width,c.height);
+ x.fillStyle='#101a26';x.fillRect(0,0,640,420);
+ // metallic circular robot pad
+ const grad=x.createRadialGradient(320,205,35,320,205,180);grad.addColorStop(0,'#aeb9c3');grad.addColorStop(.7,'#677785');grad.addColorStop(1,'#283746');
+ x.fillStyle=grad;x.beginPath();x.ellipse(320,205,205,150,0,0,Math.PI*2);x.fill();
+ x.strokeStyle='#d4dde5';x.lineWidth=5;x.stroke();
+ x.strokeStyle='#425565';x.lineWidth=2;
+ for(let i=0;i<4;i++){x.beginPath();x.ellipse(320,205,175-i*32,125-i*24,0,0,Math.PI*2);x.stroke();}
+ // suction zones
+ for(let i=0;i<4;i++){let a=i*Math.PI/2+Math.PI/4,px=320+115*Math.cos(a),py=205+78*Math.sin(a);x.fillStyle='#273542';x.beginPath();x.arc(px,py,20,0,Math.PI*2);x.fill();x.strokeStyle='#bdc8d2';x.stroke();}
+ // subtle lighting/exposure overlay
+ if(defect){let count=2+Math.floor(Math.random()*5);for(let i=0;i<count;i++){let px=220+Math.random()*200,py=140+Math.random()*130;x.fillStyle=['#8e3d27','#b65b32','#6e3428'][i%3];x.beginPath();x.ellipse(px,py,7+Math.random()*17,4+Math.random()*10,Math.random(),0,Math.PI*2);x.fill();}}
+ x.fillStyle='#dce7f2';x.font='15px Arial';x.fillText('ROBOT PAD · SIMULATED CCD IMAGE',18,28);
+ x.fillStyle='#8fa5bb';x.font='12px Arial';x.fillText(new Date().toLocaleTimeString(),18,400);
+ // brightness effect from exposure/gain
+ x.fillStyle=`rgba(255,255,255,${Math.min(.18,(exposure/40)*.12+(gain-1)*.006)})`;x.fillRect(0,0,640,420);
+}
+function makeOverlay(defect,score,conf){
+ const c=$('aiView'),x=c.getContext('2d');x.clearRect(0,0,640,420);
+ if(!lastImage){x.fillStyle='#101a26';x.fillRect(0,0,640,420);x.fillStyle='#8fa5bb';x.font='18px Arial';x.fillText('Waiting for captured image...',175,210);return;}
+ // show same pad base, then boxes
+ x.drawImage($('cameraView'),0,0);
+ if(defect){x.strokeStyle='#ff526f';x.lineWidth=4;x.strokeRect(255,145,115,85);x.fillStyle='#ff526f';x.fillRect(255,120,170,25);x.fillStyle='#fff';x.font='14px Arial';x.fillText('RESIDUE DETECTED',263,138);}
+ else{x.strokeStyle='#4ade80';x.lineWidth=4;x.strokeRect(155,75,330,260);x.fillStyle='#4ade80';x.fillRect(155,48,145,25);x.fillStyle='#082014';x.font='14px Arial';x.fillText('PAD REGION: OK',164,66);}
+ x.fillStyle='#e8f0fb';x.font='13px Arial';x.fillText(`Confidence: ${conf}%  |  Defect score: ${score}%`,18,380);
+}
+function addHistory(r){history.unshift(r);history=history.slice(0,20);$('history').innerHTML=history.map(a=>`<tr><td>${a.id}</td><td>${a.trigger?'YES':'NO'}</td><td>${a.capture?'<span class="tag ok">CAPTURED</span>':'<span class="tag skip">SKIPPED</span>'}</td><td>${a.result==='NG'?'<span class="tag ng">ABNORMAL</span>':a.result==='OK'?'<span class="tag ok">NORMAL</span>':'—'}</td><td>${a.conf==null?'—':a.conf+'%'}</td><td>${a.score==null?'—':a.score+'%'}</td><td>${a.action}</td></tr>`).join('');}
+async function processWafer(){
+ if(busy||$('camStatus').value==='disconnected'){if($('camStatus').value==='disconnected')log('Camera disconnected: capture request cannot be completed.','red');return;}
+ busy=true;waferNo++;total++;metrics();state('WAFER ARRIVED','cyan');pipeline(0);
+ const id='WF-'+String(waferNo).padStart(4,'0');log(`${id}: wafer arrived.`);
+ await wait(350);pipeline(1);
+ const trigger=rand(Number($('triggerProb').value));
+ const override=rand(Number($('overrideProb').value));
+ log(`${id}: trigger request = ${trigger?'YES':'NO'}; independent defect override = ${override?'YES':'NO'}.`,trigger?'green':'amber');
+ let shouldCapture=trigger||override;
+ if(!shouldCapture){
+  skipped++;metrics();state('NO TRIGGER · SKIPPED','amber');$('cameraInfo').textContent=`${id}: no capture (no trigger)`;$('aiInfo').textContent='AI not run: no image available';pipeline(2);
+  addHistory({id,trigger,capture:false,result:'—',conf:null,score:null,action:'Skipped'});
+  log(`${id}: no image captured; image-based AI inspection not performed.`,'amber');
+  await wait(300);pipeline(0);busy=false;return;
+ }
+ pipeline(2);state('CAPTURING IMAGE','cyan');await wait(450);
+ const actualDefect=rand(18); // simulated ground-truth pad condition
+ const exposure=Number($('exposure').value),gain=Number($('gain').value)/10;
+ makePad(actualDefect,exposure,gain);lastImage=true;captured++;metrics();
+ $('cameraInfo').textContent=`${id} · ${$('resolution').value} · ${$('fps').value} FPS · ${$('interface').value}`;
+ log(`${id}: CCD image captured (${actualDefect?'simulated residue present':'simulated clean pad'}).`,'cyan');
+ pipeline(3);state('AI ANALYZING','cyan');$('aiInfo').textContent='External AI model analyzing captured image...';await wait(650);
+ // Simulated ML inference: defect score is influenced by actual generated defect, plus noise.
+ const score=Math.max(1,Math.min(99,Math.round((actualDefect?76:18)+(Math.random()*34-17))));
+ const conf=Math.max(50,Math.min(99,Math.round(actualDefect?score+Math.random()*10:100-score+Math.random()*8)));
+ const ng=score>=Number($('threshold').value);
+ makeOverlay(ng,score,conf);
+ $('aiInfo').textContent=`${id} · ${ng?'ABNORMAL / NG':'NORMAL / OK'} · confidence ${conf}%`;
+ pipeline(4);
+ let action='Continue';
+ if(ng){defects++;action=$('autoStop').checked?'Stop / EE alert':'EE alert';state($('autoStop').checked?'STOPPED · DEFECT':'DEFECT DETECTED','red');log(`${id}: AI detected abnormal pad condition. Score ${score}%, confidence ${conf}%.`,'red');if($('autoStop').checked)running=false;if($('sound').checked)beep();}
+ else{state('INSPECTION PASSED','green');log(`${id}: AI result NORMAL. Score ${score}%, confidence ${conf}%.`,'green');}
+ metrics();addHistory({id,trigger,capture:true,result:ng?'NG':'OK',conf,score,action});
+ await wait(500);pipeline(0);busy=false;
+}
+function wait(ms){return new Promise(r=>setTimeout(r,ms));}
+function beep(){try{let a=new AudioContext(),o=a.createOscillator(),g=a.createGain();o.connect(g);g.connect(a.destination);o.frequency.value=880;g.gain.value=.04;o.start();o.stop(a.currentTime+.12);}catch(e){}}
+async function loop(){if(!running)return;if(!paused&&!busy)await processWafer();if(running)setTimeout(loop,Number($('interval').value||1800));}
+$('startBtn').onclick=()=>{if(running){return;}running=true;paused=false;$('startBtn').disabled=true;$('pauseBtn').disabled=false;log('Automatic inspection started.');loop();};
+$('singleBtn').onclick=()=>processWafer();
+$('pauseBtn').onclick=()=>{paused=!paused;$('pauseBtn').textContent=paused?'▶ Resume':'Ⅱ Pause';if(paused){state('PAUSED','amber');log('Automatic run paused.');}else{log('Automatic run resumed.');loop();}};
+$('resetBtn').onclick=()=>{running=false;paused=false;busy=false;clearTimeout(timer);total=captured=defects=skipped=waferNo=0;history=[];lastImage=null;metrics();addHistoryClear();$('startBtn').disabled=false;$('pauseBtn').disabled=true;$('pauseBtn').textContent='Ⅱ Pause';state('IDLE');pipeline(0);$('cameraView').getContext('2d').clearRect(0,0,640,420);$('aiView').getContext('2d').clearRect(0,0,640,420);$('cameraInfo').textContent='No image captured yet';$('aiInfo').textContent='Waiting for captured image';log('Simulation reset.');};
+function addHistoryClear(){$('history').innerHTML='';}
+$('clearLog').onclick=()=>$('log').innerHTML='';
+[['exposure','exposureVal',v=>v],['gain','gainVal',v=>(v/10).toFixed(1)+'×'],['threshold','thresholdVal',v=>v+'%'],['triggerProb','triggerVal',v=>v+'%'],['overrideProb','overrideVal',v=>v+'%']].forEach(([id,out,fmt])=>$(id).oninput=()=>$(out).textContent=fmt($(id).value));
+$('camStatus').onchange=()=>log('Camera status set to '+$('camStatus').selectedOptions[0].text+'.');
+$('captureMode').onchange=()=>log('Capture mode changed to '+$('captureMode').selectedOptions[0].text+'. The wafer inspection sequence remains trigger-based.');
+makePad(false);$('aiView').getContext('2d').fillStyle='#101a26';$('aiView').getContext('2d').fillRect(0,0,640,420);$('aiView').getContext('2d').fillStyle='#8fa5bb';$('aiView').getContext('2d').font='18px Arial';$('aiView').getContext('2d').fillText('Waiting for captured image...',175,210);
+log('Simulator ready. Default trigger probability: 50%.');
+</script>
+</body></html>
