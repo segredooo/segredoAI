@@ -1,0 +1,1061 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>ACS200 Coater Pad Simulator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout concept: fab control-room console. Tool animation + trigger hardware on the left, the camera's view on the right,
+   then camera controls / AI agents / CIM-MES terminal side by side, factory systems along the bottom.
+   One accent: yellow-room amber. Status colors are separate from the accent. */
+:root{
+  --bg:#0a1016; --panel:#111a23; --panel2:#0c131a; --line:#233241; --line2:#32475a;
+  --fg:#d7e1e9; --mute:#8497a8; --amber:#f2b632; --amber-ink:#1b1400;
+  --ok:#3ecf8e; --warn:#f5a524; --bad:#ff5d4d; --info:#4cc3d9;
+  --display:'Barlow Condensed','Arial Narrow',sans-serif;
+  --body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg)}
+body{color:var(--fg);font:14px/1.45 var(--body);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:14px 28px;margin:0}
+.wrap{max-width:1680px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+h1,h2,h3,p{margin:0}
+.mono{font-family:var(--mono)}
+.top{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:10px 24px}
+.eyebrow{font:500 11px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+h1{font:700 34px/1.05 var(--display);letter-spacing:.03em;text-transform:uppercase;text-wrap:balance}
+.mstate{display:flex;align-items:center;gap:10px;font:600 20px var(--display);letter-spacing:.08em;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:7px 14px}
+.mstate .mono{font-size:12px;color:var(--mute);letter-spacing:0;font-weight:400}
+.lamp{display:inline-block;width:10px;height:10px;border-radius:50%;background:#33424f;box-shadow:0 0 0 1px #00000066 inset;flex:none}
+.lamp.ok{background:var(--ok);box-shadow:0 0 8px #3ecf8e99}
+.lamp.bad{background:var(--bad);box-shadow:0 0 8px #ff5d4dcc}
+.lamp.warn{background:var(--warn);box-shadow:0 0 8px #f5a52499}
+.lamp.amb{background:var(--amber);box-shadow:0 0 8px #f2b63299}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(118px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.stat{background:var(--panel);padding:8px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.stat .k{font:500 10.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+.stat b{font:600 26px/1 var(--display);letter-spacing:.02em;font-variant-numeric:tabular-nums}
+.stat b.bad{color:var(--bad)} .stat b.ok{color:var(--ok)} .stat b.amb{color:var(--amber)}
+.alarm{display:flex;flex-wrap:wrap;gap:10px 20px;justify-content:space-between;align-items:center;background:#2a1010;border:1px solid var(--bad);border-radius:6px;padding:12px 16px}
+.alarm strong{font:700 22px var(--display);letter-spacing:.06em;text-transform:uppercase;color:#ff8a7d}
+.alarm p{color:#f0c6c0;max-width:80ch;font-size:13px}
+.alarm .alb{display:flex;flex-wrap:wrap;gap:8px}
+@media (prefers-reduced-motion:no-preference){.alarm{animation:pulse 1.4s ease-in-out infinite}}
+@keyframes pulse{50%{background:#3a1515}}
+.grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:14px;align-items:start}
+.c3{grid-column:span 3}.c4{grid-column:span 4}.c5{grid-column:span 5}.c7{grid-column:span 7}.c12{grid-column:span 12}
+@media (max-width:1180px){.c3,.c4,.c5,.c7{grid-column:span 12}}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;min-width:0;overflow:hidden}
+.ph{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:4px 12px;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--panel2)}
+.ph h2{font:600 19px/1.1 var(--display);letter-spacing:.07em;text-transform:uppercase}
+.tag{font:500 11px var(--mono);color:var(--mute)}
+.pb{padding:12px 14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+h3{font:500 11px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+.hint{font-size:12px;color:var(--mute)}
+/* flow */
+.flow{list-style:none;margin:0;padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid var(--line)}
+.flow li{font:500 12px var(--mono);padding:4px 9px;border:1px solid var(--line);border-radius:3px;color:var(--mute);display:flex;gap:6px;align-items:center}
+.flow li i{font-style:normal;color:var(--mute);font-size:10px}
+.flow li.done{color:var(--fg);border-color:var(--line2)}
+.flow li.on{color:var(--amber-ink);background:var(--amber);border-color:var(--amber)}
+.flow li.on i{color:var(--amber-ink)}
+.flow li.ok{background:var(--ok);border-color:var(--ok);color:#06231a}
+.flow li.bad{background:var(--bad);border-color:var(--bad);color:#2b0805}
+canvas{display:block;max-width:100%}
+#sim{width:100%;height:auto;aspect-ratio:960/540;background:#0c141b}
+.hw{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;padding:12px 14px;border-top:1px solid var(--line)}
+.hwcol{display:flex;flex-direction:column;gap:8px;min-width:0}
+.sens{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font:12px var(--mono)}
+.sens li{display:flex;gap:8px;align-items:center}
+/* controls */
+.btn{font:500 12.5px var(--body);color:var(--fg);background:var(--panel2);border:1px solid var(--line2);border-radius:4px;padding:7px 12px;cursor:pointer;min-height:34px}
+.btn:hover:not(:disabled){border-color:var(--amber)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.pri{background:var(--amber);border-color:var(--amber);color:var(--amber-ink);font-weight:600}
+.btn.bad{background:#3a1713;border-color:var(--bad);color:#ffb3aa}
+.btn.ok{background:#0f2a21;border-color:var(--ok);color:#9fe8c8}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
+.seg{display:flex;flex-direction:column;gap:5px}
+.seg label{display:block;cursor:pointer}
+.seg input{position:absolute;opacity:0;pointer-events:none}
+.seg span{display:block;font:500 12.5px var(--body);padding:7px 10px;border:1px solid var(--line2);border-radius:4px;background:var(--panel2)}
+.seg input:checked+span{border-color:var(--amber);color:var(--amber);background:#1d1a0d}
+.seg input:focus-visible+span{outline:2px solid var(--amber);outline-offset:2px}
+.row{display:grid;grid-template-columns:96px minmax(0,1fr) 62px;gap:8px;align-items:center;font-size:12.5px}
+.row label{color:var(--mute)}
+.row output{font:12px var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.row2{display:grid;grid-template-columns:96px minmax(0,1fr);gap:8px;align-items:center;font-size:12.5px}
+.row2 label{color:var(--mute)}
+input[type=range]{width:100%;accent-color:var(--amber);margin:0;min-width:0}
+select,input[type=text]{width:100%;font:12.5px var(--body);color:var(--fg);background:var(--panel2);border:1px solid var(--line2);border-radius:4px;padding:6px 8px;min-width:0}
+select:disabled,input:disabled{opacity:.5}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.chip{font:11px var(--mono);padding:2px 7px;border-radius:3px;border:1px solid var(--line2);color:var(--mute)}
+.chip.y{color:#9fe8c8;border-color:#1f5a46}
+.chip.n{color:#ff9d92;border-color:#5d2620;text-decoration:line-through}
+.meter{height:8px;background:var(--panel2);border:1px solid var(--line2);border-radius:4px;overflow:hidden}
+.meter i{display:block;height:100%;background:var(--ok);width:0}
+.meter i.bad{background:var(--bad)}
+/* camera view */
+.view{position:relative;aspect-ratio:16/9;background:#000}
+.view canvas{position:absolute;inset:0;width:100%;height:100%}
+.hud{position:absolute;font:500 11px var(--mono);color:#fff;text-shadow:0 1px 2px #000;pointer-events:none}
+.hud.tl{left:10px;top:8px} .hud.tr{right:10px;top:8px;display:flex;gap:8px;align-items:center}
+.hud.bl{left:10px;bottom:8px;width:44%} .hud.br{right:10px;bottom:8px}
+.rec{width:9px;height:9px;border-radius:50%;background:#555}
+.rec.on{background:var(--bad);box-shadow:0 0 8px var(--bad)}
+.iq{height:5px;background:#0008;border-radius:3px;overflow:hidden;margin-top:3px}
+.iq i{display:block;height:100%;background:var(--ok);width:0}
+.pill{font:600 12px var(--mono);letter-spacing:.06em;padding:3px 9px;border-radius:3px;background:#27323c;color:var(--fg);display:inline-block}
+.pill.ok{background:var(--ok);color:#06231a}.pill.bad{background:var(--bad);color:#2b0805}.pill.warn{background:var(--warn);color:#2a1b00}
+.caps{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.caps figure{margin:0;display:flex;flex-direction:column;gap:3px;min-width:0}
+.caps img{width:100%;aspect-ratio:16/9;object-fit:cover;border:1px solid var(--line2);border-radius:3px;background:#000}
+.caps figcaption{font:10.5px var(--mono);color:var(--mute);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chk{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--mute)}
+/* agents */
+.agent{border:1px solid var(--line);border-radius:5px;background:var(--panel2);padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.agent>header{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.agent>header h3{color:var(--fg);font:600 16px var(--display);letter-spacing:.07em}
+.agent>header .tag{margin-left:auto}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.pair figure{margin:0;min-width:0}
+.pair canvas{width:100%;height:auto;aspect-ratio:16/9;border:1px solid var(--line2);border-radius:3px;background:#000}
+.pair figcaption{font:10.5px var(--mono);color:var(--mute);margin-top:2px}
+.verdict{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12px}
+.boxes{list-style:none;margin:0;padding:0;font:11.5px var(--mono);color:var(--mute);display:flex;flex-direction:column;gap:2px}
+.tbl{width:100%;border-collapse:collapse;font:11.5px var(--mono)}
+.tbl th{color:var(--mute);font-weight:500;text-align:left;padding:3px 6px;border-bottom:1px solid var(--line);white-space:nowrap}
+.tbl td{padding:3px 6px;border-bottom:1px solid #1a2631;white-space:nowrap;font-variant-numeric:tabular-nums}
+.tblw{overflow-x:auto}
+.good{color:var(--ok)}.badt{color:var(--bad)}.warnt{color:var(--warn)}
+.gauge{display:flex;align-items:baseline;gap:10px}
+.gauge b{font:700 44px/1 var(--display);font-variant-numeric:tabular-nums}
+.gauge span{font:12px var(--mono);color:var(--mute)}
+.cups{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.cup{border:1px solid var(--line2);border-radius:4px;padding:5px 6px;font:11px var(--mono);color:var(--mute);display:flex;flex-direction:column;gap:4px}
+.cup .meter{height:6px}
+.chart{width:100%;height:auto;aspect-ratio:360/84;background:#0a1117;border:1px solid var(--line);border-radius:3px}
+/* terminal */
+.tabs{display:flex;gap:4px}
+.tabs button{font:500 12px var(--mono);color:var(--mute);background:transparent;border:1px solid var(--line2);border-radius:3px;padding:3px 9px;cursor:pointer}
+.tabs button[aria-selected=true]{color:var(--amber-ink);background:var(--amber);border-color:var(--amber)}
+.term{height:520px;overflow:auto;background:#070b10;font:12px/1.5 var(--mono);padding:8px 10px}
+.ln{display:grid;grid-template-columns:62px 54px minmax(0,1fr);gap:6px;overflow-wrap:anywhere}
+.ln .ts{color:#5a6b7a}
+.ln .sys{font-weight:500}
+.ln.bad .m{color:#ff9d92}.ln.warn .m{color:#f8c46a}.ln.ok .m{color:#9fe8c8}
+.s-TOOL,.s-SENSOR,.s-SIM{color:#7d8f9f}.s-CCD,.s-VISION{color:var(--amber)}.s-RPA,.s-HEALTH{color:var(--info)}
+.s-EAP{color:#7fb0ff}.s-CIM,.s-RTHM{color:#c1a0ff}.s-MES,.s-XLS{color:var(--ok)}.s-NOTES{color:var(--warn)}.s-SDK{color:#d7e1e9}
+.sdkf{display:flex;align-items:center;gap:6px;padding:8px 10px;border-top:1px solid var(--line);background:var(--panel2);font:12px var(--mono);color:var(--mute)}
+.sdkf input{flex:1;font-family:var(--mono)}
+.foot{font:11.5px var(--mono);color:var(--mute);display:flex;flex-wrap:wrap;gap:6px 18px;border-top:1px solid var(--line);padding-top:12px}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="eyebrow">SUSS ACS200 Gen3 · Coater 6500 · Robot pad residue inspection</div>
+      <h1>ACS200 coater pad simulator</h1>
+    </div>
+    <div class="mstate" aria-live="polite"><i id="stLamp" class="lamp ok"></i><span id="stText">RUN</span><span id="clock" class="mono">14:30:00</span></div>
+  </header>
+
+  <section class="stats" aria-label="Shift counters">
+    <div class="stat"><span class="k">Wafers coated</span><b id="sDone">0</b></div>
+    <div class="stat"><span class="k">CCD inspections</span><b id="sInsp">0</b></div>
+    <div class="stat"><span class="k">Residue caught</span><b id="sCaught" class="ok">0</b></div>
+    <div class="stat"><span class="k">False alarms</span><b id="sFA">0</b></div>
+    <div class="stat"><span class="k">Missed by camera</span><b id="sMiss" class="amb">0</b></div>
+    <div class="stat"><span class="k">Wafer breakage</span><b id="sBrk" class="bad">0</b></div>
+    <div class="stat"><span class="k">Shift score</span><b id="sScore">0</b></div>
+  </section>
+
+  <section id="alarm" class="alarm" role="alert" hidden>
+    <div><strong id="alT"></strong><p id="alM"></p></div>
+    <div class="alb">
+      <button class="btn" id="eeAck" type="button">EE acknowledge</button>
+      <button class="btn ok" id="eeClean" type="button">Clean pad &amp; resume</button>
+      <button class="btn ok" id="eeRepl" type="button">Replace 4 nozzles &amp; resume</button>
+    </div>
+  </section>
+
+  <main class="grid">
+    <!-- Hardware + trigger simulation -->
+    <section class="panel c7" aria-label="Hardware and trigger simulation">
+      <div class="ph"><h2>Hardware &amp; trigger simulation</h2><span class="tag">wafer transfer arm · sensor trigger · manual SDK trigger</span></div>
+      <ol class="flow" id="flow">
+        <li><i>1</i>Wafer on arm</li><li><i>2</i>Transfer complete</li><li><i>3</i>CCD trigger</li><li><i>4</i>Vision Agent</li><li id="f4"><i>5</i>Pass / stop + alert EE</li>
+      </ol>
+      <canvas id="sim" aria-label="Top view of cassette, robot arm and coater chuck"></canvas>
+      <div class="hw">
+        <div class="hwcol">
+          <h3>Sensors</h3>
+          <ul class="sens">
+            <li><i id="l1" class="lamp"></i>S1 arm wafer-present</li>
+            <li><i id="l2" class="lamp"></i>S2 chuck wafer-present</li>
+            <li><i id="l3" class="lamp"></i>S3 pad at CCD home</li>
+            <li><i id="l4" class="lamp"></i>CCD shutter</li>
+          </ul>
+          <h3>Trigger mode</h3>
+          <div class="seg" role="radiogroup" aria-label="Trigger mode">
+            <label><input type="radio" name="mode" value="sensor" checked><span>Sensor · one shot per wafer</span></label>
+            <label><input type="radio" name="mode" value="stream"><span>Real-time · stream sampling</span></label>
+            <label><input type="radio" name="mode" value="manual"><span>Manual SDK trigger only</span></label>
+          </div>
+          <p class="hint" id="modeHint"></p>
+        </div>
+        <div class="hwcol">
+          <h3>Process</h3>
+          <div class="btns">
+            <button class="btn" id="play" type="button">Pause</button>
+            <button class="btn pri" id="trig" type="button">Manual SDK trigger</button>
+          </div>
+          <div class="row2"><label for="speed">Sim speed</label>
+            <select id="speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option><option value="8">8×</option></select></div>
+          <div class="row"><label for="bs">Backside PR</label><input id="bs" type="range" min="0" max="100" value="25"><output id="bsO">25%</output></div>
+          <div class="row"><label for="wear">Nozzle wear</label><input id="wear" type="range" min="0" max="100" value="35"><output id="wearO">35%</output></div>
+          <div class="btns"><button class="btn" id="inject" type="button">Inject residue on pad</button></div>
+          <label class="chk"><input type="checkbox" id="truth"> Show ground truth (debug)</label>
+          <p class="hint">Backside PR is the share of incoming wafers carrying photoresist on the back. Nozzle wear sets how much of it the pad picks up.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Camera preview -->
+    <section class="panel c5" aria-label="Camera preview">
+      <div class="ph"><h2>Camera preview</h2><span class="tag" id="camTag"></span></div>
+      <div class="view">
+        <canvas id="cam" width="800" height="450"></canvas>
+        <canvas id="ov" width="800" height="450"></canvas>
+        <div class="hud tl" id="hudTL"></div>
+        <div class="hud tr"><span id="hudRec">REC</span><i id="rec" class="rec"></i></div>
+        <div class="hud bl"><span id="hudIQ">IQI</span><div class="iq"><i id="iqBar"></i></div></div>
+        <div class="hud br"><span id="hudROI">ROI 200×112 mm</span></div>
+      </div>
+      <div class="pb">
+        <h3>Captured frames (stored with overlay)</h3>
+        <div class="caps" id="caps"><span class="hint">No frames yet. A trigger or snapshot adds one here.</span></div>
+      </div>
+    </section>
+
+    <!-- Camera controls -->
+    <section class="panel c4" aria-label="Camera controls">
+      <div class="ph"><h2>Camera UI controls</h2><span class="tag">FPS · exposure · SDK</span></div>
+      <div class="pb">
+        <div class="row2"><label for="model">Camera</label><select id="model"></select></div>
+        <div class="row2"><label for="res">Resolution</label><select id="res"></select></div>
+        <div class="row2"><label for="iface">Interface</label><select id="iface"></select></div>
+        <div class="row"><label for="fps">Frame rate</label><input id="fps" type="range" min="1" max="60" step="0.1" value="60"><output id="fpsO"></output></div>
+        <div class="row"><label for="exp">Exposure</label><input id="exp" type="range" min="0" max="100" step="0.5" value="69"><output id="expO"></output></div>
+        <div class="row"><label for="gain">Gain</label><input id="gain" type="range" min="0" max="24" step="0.5" value="6"><output id="gainO"></output></div>
+        <div class="row"><label for="focus">Focus</label><input id="focus" type="range" min="0" max="100" value="60"><output id="focusO"></output></div>
+        <div class="row"><label for="zoom">Digital zoom</label><input id="zoom" type="range" min="1" max="3" step="0.1" value="1"><output id="zoomO"></output></div>
+        <div class="row"><label for="sat">Saturation</label><input id="sat" type="range" min="0.4" max="1.8" step="0.05" value="1"><output id="satO"></output></div>
+        <div class="row"><label for="con">Contrast</label><input id="con" type="range" min="0.6" max="1.6" step="0.05" value="1.1"><output id="conO"></output></div>
+        <label class="chk"><input type="checkbox" id="sharp" disabled> Sharpening (not supported by this camera family)</label>
+        <div>
+          <h3>Link load (raw 8-bit estimate)</h3>
+          <div class="meter" style="margin:6px 0 4px"><i id="linkBar"></i></div>
+          <p class="hint mono" id="linkTxt"></p>
+        </div>
+        <div class="btns">
+          <button class="btn" id="aeBtn" type="button">Auto-expose</button>
+          <button class="btn" id="snapBtn" type="button">Snapshot</button>
+          <button class="btn" id="recBtn" type="button">Record</button>
+          <button class="btn pri" id="trig2" type="button">Trigger</button>
+        </div>
+        <div><h3>Camera spec</h3><p class="hint mono" id="specTxt" style="margin-top:4px"></p></div>
+        <div class="chips" id="capChips"></div>
+      </div>
+    </section>
+
+    <!-- Agents -->
+    <section class="panel c4" aria-label="AI vision engine">
+      <div class="ph"><h2>AI vision engine</h2><span class="tag">multi-agent</span></div>
+      <div class="pb">
+        <article class="agent">
+          <header><i id="lVis" class="lamp ok"></i><h3>Vision Agent</h3><span class="tag">classify normal / abnormal pad</span></header>
+          <div class="pair">
+            <figure><canvas id="refC" width="224" height="126"></canvas><figcaption>Golden reference · normal</figcaption></figure>
+            <figure><canvas id="lastC" width="224" height="126"></canvas><figcaption id="lastCap">Latest capture</figcaption></figure>
+          </div>
+          <div class="verdict"><span id="vPill" class="pill">WAITING</span><span class="mono" id="vConf"></span></div>
+          <ul class="boxes" id="vBoxes"></ul>
+          <div class="row"><label for="thr">Alert at ≥</label><input id="thr" type="range" min="0.5" max="0.95" step="0.01" value="0.60"><output id="thrO">0.60</output></div>
+        </article>
+        <article class="agent">
+          <header><i id="lRpa" class="lamp ok"></i><h3>RPA Agent</h3><span class="tag">PR residue log → Meta BI</span></header>
+          <div class="tblw"><table class="tbl"><thead><tr><th>Time</th><th>Wafer</th><th>Result</th><th>Conf</th><th>mm²</th></tr></thead><tbody id="rpaRows"></tbody></table></div>
+          <p class="hint mono" id="rpaUp">Meta BI uploads: 0</p>
+        </article>
+        <article class="agent">
+          <header><i id="lHl" class="lamp ok"></i><h3>AI Health Agent</h3><span class="tag">suction cup trend</span></header>
+          <div class="gauge"><b id="hVal">96</b><span id="hTxt">GOOD</span></div>
+          <canvas id="chA" class="chart" width="720" height="168" aria-label="Residue area per inspection"></canvas>
+          <canvas id="chH" class="chart" width="720" height="168" aria-label="Pad health score"></canvas>
+          <p class="hint mono" id="hPred"></p>
+          <div class="cups" id="cups"></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- Terminal -->
+    <section class="panel c4" aria-label="CIM and MES terminal">
+      <div class="ph"><h2>CIM / MES terminal</h2>
+        <div class="tabs" role="tablist"><button type="button" role="tab" data-tab="main" aria-selected="true">Factory</button><button type="button" role="tab" data-tab="sdk" aria-selected="false">SDK console</button></div></div>
+      <div class="term" id="termMain" role="log" aria-live="off"></div>
+      <div class="term" id="termSdk" hidden></div>
+      <form class="sdkf" id="sdkForm" hidden autocomplete="off"><span>cam.</span><input type="text" id="sdkIn" placeholder="trigger()   setExposure(8)   help()"><button class="btn" type="submit">Run</button></form>
+    </section>
+
+    <!-- Factory systems -->
+    <section class="panel c4" aria-label="B7 EAP host database">
+      <div class="ph"><h2>B7 EAP host DB</h2><span class="tag">image + result storage</span></div>
+      <div class="pb">
+        <div class="chips"><span class="chip" id="eapN">0 images</span><span class="chip" id="eapMB">0.0 MB</span><span class="chip">AI CV platform deployed</span></div>
+        <ul class="boxes" id="eapList"></ul>
+      </div>
+    </section>
+    <section class="panel c4" aria-label="CIM web service and MES">
+      <div class="ph"><h2>CIM RTHM → MES</h2><span class="tag">AID dispatch · SETUP / Repair</span></div>
+      <div class="pb">
+        <p class="hint mono" id="aidTxt">Last AID: none</p>
+        <div class="tblw"><table class="tbl"><thead><tr><th>SETUP no.</th><th>Reason</th><th>Status</th></tr></thead><tbody id="ordRows"></tbody></table></div>
+      </div>
+    </section>
+    <section class="panel c4" aria-label="Suction nozzle inventory">
+      <div class="ph"><h2>Nozzle inventory</h2><span class="tag">NOTES · Excel report</span></div>
+      <div class="pb">
+        <div class="tblw"><table class="tbl"><thead><tr><th>Type</th><th>Stock</th><th>Status</th></tr></thead><tbody id="stockRows"></tbody></table></div>
+        <div class="btns"><button class="btn" id="xlsBtn" type="button">Generate Excel report</button><button class="btn" id="recvBtn" type="button">Receive +20 type C</button></div>
+        <ul class="boxes" id="noteList"></ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>Slide targets: wafer breakage risk 1 → 0 pcs/year</span>
+    <span>manual pad check 15 → 10 h/month (saves 5 h/M)</span>
+    <span>AI time benefit 0.25 h/day</span>
+    <span>All IDs, rates and inventory figures here are simulated.</span>
+  </footer>
+</div>
+
+<script>
+(()=>{
+'use strict';
+const $=id=>document.getElementById(id);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const rnd=(a=0,b=1)=>a+Math.random()*(b-a);
+const PI=Math.PI;
+const css=getComputedStyle(document.documentElement);
+const V=n=>css.getPropertyValue(n).trim();
+const DPR=Math.min(2,window.devicePixelRatio||1);
+
+/* ---------------- camera models (from the spec slides) ---------------- */
+const MODELS={
+  gz:{name:'GZHL980 (planned upgrade)',w:3840,h:2160,fps:60,cell:2.0,ifs:['USB','GigE','HDMI'],lens:1,focus:true,size:'78×65×81 mm'},
+  g41:{name:'4096×2160 · GigE',w:4096,h:2160,fps:12.4,cell:3.45,ifs:['GigE'],lens:1,focus:true,size:'29×29×58 mm'},
+  g24:{name:'2448×2040 · GigE',w:2448,h:2040,fps:21,cell:3.45,ifs:['GigE'],lens:1,focus:true,size:'38×35×28 mm'},
+  u30:{name:'3072×2048 · USB3.0',w:3072,h:2048,fps:30,cell:2.4,ifs:['USB3.0'],lens:1,focus:true,size:'27.5×27.5×17.7 mm'},
+  u19:{name:'1920×1080 · USB',w:1920,h:1080,fps:30,cell:2.8,ifs:['USB'],lens:1,focus:true,size:'25×25×25.6 mm'},
+  axis:{name:'AXIS M1025 (current)',w:1920,h:1080,fps:30,cell:2.8,ifs:['Network'],lens:2.2,focus:false,size:'network camera'}
+};
+const LINK={USB:600,'USB3.0':400,GigE:115,HDMI:1000,Network:1000}; // MB/s, rough practical figures
+const RES_ALL=[[3840,2160],[2560,1440],[1920,1080],[1280,720]];
+const C={model:'gz',w:3840,h:2160,iface:'USB',fps:60,exp:6,gain:6,focus:60,zoom:1,sat:1,con:1.1,rec:false,recFrames:0};
+
+/* ---------------- state ---------------- */
+const TH={cass:PI,chuck:0,home:PI/2}, R={cass:270,chuck:270,home:120};
+const BASE={x:400,y:270}, LK=150;
+const CUPS=[[-42,-20],[-42,20],[18,-20],[18,20]];
+const S={t:0,playing:true,speed:1,machine:'RUN',mode:'sensor',bs:.25,wear:.35,thr:.6,truth:false,
+  arm:{th:PI/2,r:120},wafer:null,resid:[],frame:0,busy:false,boxes:[],freezeUntil:0,infer:-1,inferT0:0,inferD:1,flash:0,
+  coating:false,coatT:0,spin:0,token:0,waferNo:0,step:-1,stepCls:'',sens:{arm:false,chuck:false},
+  st:{done:0,insp:0,caught:0,fa:0,miss:0,brk:0},
+  hist:[],health:[],estWear:0,sinceMaint:8,cupHits:[0,0,0,0],
+  aid:0,setup:0,eap:{n:0,mb:0,recent:[]},orders:[],stock:{A:100,B:20,C:14,D:6},notes:[],rows:[],uploads:0,
+  alarm:null,fixing:false,caps:[],crack:null,q:{q:1}};
+for(let i=0;i<8;i++){S.hist.push({area:0,abn:0});S.health.push(97-(i%3===1?1:0)-(i>5?1:0));}
+
+/* ---------------- scheduler (sim clock) ---------------- */
+const timers=[],tweens=[];
+const sleep=ms=>new Promise(res=>timers.push({t:S.t+ms,res}));
+const tween=(to,ms)=>new Promise(res=>tweens.push({f:{th:S.arm.th,r:S.arm.r},to,t0:S.t,d:Math.max(1,ms),res}));
+function advance(dt){
+  S.t+=dt;
+  for(let i=tweens.length-1;i>=0;i--){
+    const tw=tweens[i],k=clamp((S.t-tw.t0)/tw.d,0,1),e=k<.5?4*k*k*k:1-Math.pow(-2*k+2,3)/2;
+    if('th' in tw.to)S.arm.th=tw.f.th+(tw.to.th-tw.f.th)*e;
+    if('r' in tw.to)S.arm.r=tw.f.r+(tw.to.r-tw.f.r)*e;
+    if(k>=1){tweens.splice(i,1);tw.res();}
+  }
+  for(let i=0;i<timers.length;){ if(timers[i].t<=S.t){const x=timers.splice(i,1)[0];x.res();} else i++; }
+  S.flash=Math.max(0,S.flash-dt/450);
+  if(S.coating&&S.machine==='RUN')S.spin+=dt*.012;
+}
+const gate=async()=>{while(S.machine!=='RUN')await sleep(120);};
+async function armTo(th,r,ms){
+  const a=S.arm;
+  if(Math.abs(a.th-th)>.02){ if(a.r>115)await tween({r:110},ms*.3); await tween({th},ms*.4); await tween({r},ms*.3); }
+  else await tween({r},ms*.6);
+}
+const clock=()=>{const d=new Date(Date.UTC(2026,10,1,6,30,0)+S.t);return new Date(d.getTime()+8*3600e3).toISOString().substr(11,8);};
+const dateTag=()=>'20261101';
+
+/* ---------------- logging ---------------- */
+function addLine(box,sys,msg,lvl,max=500){
+  const d=document.createElement('div');d.className='ln '+(lvl||'');
+  const a=document.createElement('span');a.className='ts';a.textContent=clock();
+  const b=document.createElement('span');b.className='sys s-'+sys;b.textContent=sys;
+  const c=document.createElement('span');c.className='m';c.textContent=msg;
+  d.append(a,b,c);
+  const stick=box.scrollTop+box.clientHeight>=box.scrollHeight-30;
+  box.appendChild(d);
+  while(box.childNodes.length>max)box.removeChild(box.firstChild);
+  if(stick)box.scrollTop=box.scrollHeight;
+}
+function log(sys,msg,lvl){ if(sys==='SIM'&&!S.truth)return; addLine($('termMain'),sys,msg,lvl); }
+function sdkLine(msg,lvl){ addLine($('termSdk'),'SDK',msg,lvl,300); }
+function echo(call){ sdkLine('> cam.'+call); }
+
+/* ---------------- camera model maths ---------------- */
+function eff(){
+  const m=MODELS[C.model], px=C.w*C.h, fpsReq=Math.min(m.fps,C.fps), raw=px*fpsReq/1e6, lim=LINK[C.iface];
+  const fps=Math.max(.5,Math.min(fpsReq,lim*1e6/px)), exp=Math.min(C.exp,1000/fps*.95);
+  const gsd=500/C.w*m.lens;                       // mm per pixel across the 500 mm wide field of view
+  const sens=Math.pow(m.cell/2.0,2)*(m.lens>1?.9:1);
+  const L=(exp/6)*Math.pow(10,C.gain/20)/2*sens;  // 1.0 = well exposed
+  return {m,px,raw,lim,fps,exp,gsd,L,sens};
+}
+function quality(e){
+  const es=clamp(1-Math.abs(Math.log2(e.L))/2.5,0,1);
+  const fs=e.m.focus?clamp(1-Math.abs(C.focus-60)/45,0,1):.55;
+  const ns=clamp(1-C.gain/30,0,1);
+  return {q:.45*es+.35*fs+.2*ns,es,fs,ns};
+}
+const expFromSlider=v=>.125*Math.pow(264,v/100);
+const sliderFromExp=ms=>100*Math.log(ms/.125)/Math.log(264);
+
+/* ---------------- drawing helpers ---------------- */
+function rr(g,x,y,w,h,r){g.beginPath();g.moveTo(x+r,y);g.arcTo(x+w,y,x+w,y+h,r);g.arcTo(x+w,y+h,x,y+h,r);g.arcTo(x,y+h,x,y,r);g.arcTo(x,y,x+w,y,r);g.closePath();}
+function blobPath(g,b,sc){
+  const n=b.s.length,pts=b.s.map((s,i)=>{const a=i/n*2*PI,r=b.r*sc*(.7+.5*s);return[Math.cos(a)*r,Math.sin(a)*r];});
+  const mid=(p,q)=>[(p[0]+q[0])/2,(p[1]+q[1])/2];
+  g.beginPath();let m0=mid(pts[n-1],pts[0]);g.moveTo(m0[0],m0[1]);
+  for(let i=0;i<n;i++){const p=pts[i],m=mid(p,pts[(i+1)%n]);g.quadraticCurveTo(p[0],p[1],m[0],m[1]);}
+  g.closePath();
+}
+const noiseTile=(()=>{const c=document.createElement('canvas');c.width=c.height=128;const g=c.getContext('2d'),d=g.createImageData(128,128);
+  for(let i=0;i<d.data.length;i+=4){const v=Math.random()*255;d.data[i]=d.data[i+1]=d.data[i+2]=v;d.data[i+3]=255;}g.putImageData(d,0,0);return c;})();
+
+/* the scene the camera sees: region of interest 200 x 112.5 mm around the pad, origin at centre */
+function drawScene(g,W,H,e,opt){
+  opt=opt||{};const k=W/200,wear=opt.clean?0:S.wear;
+  g.save();g.setTransform(1,0,0,1,0,0);
+  const gr=g.createLinearGradient(0,0,W,H);gr.addColorStop(0,'#5d5611');gr.addColorStop(1,'#3d4a12');g.fillStyle=gr;g.fillRect(0,0,W,H);
+  g.translate(W/2,H/2);g.scale(k,k);
+  g.strokeStyle='rgba(18,20,4,.5)';g.lineWidth=1.1;
+  for(let y=-50;y<=50;y+=25){g.beginPath();g.moveTo(-100,y);g.lineTo(100,y);g.stroke();}
+  for(let x=-100;x<=100;x+=40){g.beginPath();g.moveTo(x,-60);g.lineTo(x,60);g.stroke();}
+  g.fillStyle='rgba(38,112,52,.5)';g.fillRect(-100,36,200,24);
+  rr(g,50,-19,70,38,6);g.fillStyle='#bdae63';g.fill();g.strokeStyle='#7d7236';g.lineWidth=.8;g.stroke();
+  rr(g,-75,-42,130,84,10);const pg=g.createLinearGradient(-75,-42,55,42);pg.addColorStop(0,'#e6dcaa');pg.addColorStop(1,'#c8bb7e');g.fillStyle=pg;g.fill();g.strokeStyle='#857a3c';g.lineWidth=1;g.stroke();
+  CUPS.forEach(([x,y],i)=>{const d=i===2?wear:i===1?wear*.4:0;g.save();g.translate(x,y);g.rotate(d*.6);g.scale(1+d*.28,1-d*.32);
+    g.beginPath();g.arc(0,0,9,0,2*PI);g.fillStyle='#2b2a18';g.fill();
+    g.beginPath();g.arc(0,0,5.6,0,2*PI);g.fillStyle='#716945';g.fill();
+    g.beginPath();g.arc(0,0,2.3,0,2*PI);g.fillStyle='#111';g.fill();g.restore();});
+  if(!opt.clean){
+    S.resid.forEach(b=>{g.save();g.translate(b.x,b.y);
+      blobPath(g,b,1.55);g.fillStyle='rgba(150,78,20,.2)';g.fill();
+      blobPath(g,b,1);g.fillStyle='rgba(122,52,12,.82)';g.fill();g.strokeStyle='rgba(66,26,4,.9)';g.lineWidth=.35;g.stroke();
+      g.beginPath();g.ellipse(-b.r*.25,-b.r*.3,b.r*.3,b.r*.16,-.5,0,2*PI);g.fillStyle='rgba(255,216,150,.55)';g.fill();g.restore();});
+    if(S.wafer&&S.wafer.loc==='arm'){
+      const wg=g.createRadialGradient(-20,-15,5,0,0,105);wg.addColorStop(0,'#d5d9de');wg.addColorStop(.7,'#a3a9b1');wg.addColorStop(1,'#7f858d');
+      g.beginPath();g.arc(0,0,100,0,2*PI);g.fillStyle=wg;g.fill();
+      g.strokeStyle='rgba(255,255,255,.22)';g.lineWidth=.8;for(let r=30;r<100;r+=26){g.beginPath();g.arc(0,0,r,0,2*PI);g.stroke();}
+      if(S.wafer.coated){g.fillStyle='rgba(200,110,30,.12)';g.fillRect(-100,-60,200,120);}
+    }
+  }
+  g.restore();
+  g.fillStyle='rgba(255,205,40,.10)';g.fillRect(0,0,W,H);
+  if(!opt.clean){
+    const L=e.L;
+    if(L<1){g.fillStyle='rgba(0,0,0,'+(1-Math.pow(L,.55)).toFixed(3)+')';g.fillRect(0,0,W,H);}
+    else if(L>1){g.save();g.globalCompositeOperation='screen';g.fillStyle='rgba(255,255,255,'+Math.min(.85,1-1/Math.pow(L,.7)).toFixed(3)+')';g.fillRect(0,0,W,H);g.restore();}
+    const na=clamp(C.gain/24*.4+(L<1?(1-L)*.15:0),0,.5);
+    if(na>.01){g.save();g.globalAlpha=na;g.globalCompositeOperation='overlay';g.translate(rnd(0,128),rnd(0,128));g.fillStyle=g.createPattern(noiseTile,'repeat');g.fillRect(-128,-128,W+256,H+256);g.restore();}
+  }
+}
+const off=document.createElement('canvas'),og=off.getContext('2d');
+const camC=$('cam'),dg=camC.getContext('2d'),ovC=$('ov'),ovg=ovC.getContext('2d');
+function camFilter(e,q){return 'saturate('+C.sat+') contrast('+C.con+') blur('+((1-q.fs)*2.4).toFixed(2)+'px)';}
+function drawCam(e){
+  const q=quality(e);S.q=q;
+  const iw=clamp(Math.round(.2*C.w/e.m.lens),120,820),ih=Math.round(iw*9/16);
+  if(off.width!==iw){off.width=iw;off.height=ih;}
+  drawScene(og,iw,ih,e);
+  const z=C.zoom,sw=iw/z,sh=ih/z;
+  dg.imageSmoothingEnabled=false;
+  dg.drawImage(off,(iw-sw)/2,(ih-sh)/2,sw,sh,0,0,800,450);
+  camC.style.filter=camFilter(e,q);
+}
+const isFrozen=()=>S.busy||S.t<S.freezeUntil;
+function drawBoxes(g,boxes,k){
+  g.save();g.scale(k,k);g.font='600 13px IBM Plex Mono, monospace';g.textBaseline='top';
+  boxes.forEach(b=>{
+    const hit=b.conf>=S.thr,cx=400+b.x*4*C.zoom,cy=225+b.y*4*C.zoom,hs=b.hs*4*C.zoom+4;
+    g.lineWidth=2.5;g.strokeStyle=hit?'#ff5d4d':'#f5a524';g.setLineDash(hit?[]:[6,4]);g.strokeRect(cx-hs,cy-hs,hs*2,hs*2);g.setLineDash([]);
+    const t=(hit?'PR residue ':'below thr ')+b.conf.toFixed(2),tw=g.measureText(t).width+10;
+    let ly=cy-hs-20;if(ly<0)ly=cy+hs+2;
+    g.fillStyle=hit?'#ff5d4d':'#f5a524';g.fillRect(cx-hs,ly,tw,18);g.fillStyle='#10161c';g.fillText(t,cx-hs+5,ly+2);
+  });
+  g.restore();
+}
+function drawOverlay(){
+  ovg.clearRect(0,0,800,450);
+  if(S.truth&&!(S.wafer&&S.wafer.loc==='arm')){
+    ovg.save();ovg.setLineDash([3,4]);ovg.strokeStyle='#4cc3d9';ovg.lineWidth=1.5;ovg.font='11px IBM Plex Mono, monospace';ovg.fillStyle='#4cc3d9';
+    S.resid.forEach(b=>{const cx=400+b.x*4*C.zoom,cy=225+b.y*4*C.zoom,r=b.r*4*C.zoom*1.2;ovg.beginPath();ovg.arc(cx,cy,r,0,2*PI);ovg.stroke();ovg.fillText('truth Ø'+(b.r*2).toFixed(1)+'mm',cx+r+4,cy+3);});
+    ovg.restore();
+  }
+  if(S.boxes.length&&isFrozen())drawBoxes(ovg,S.boxes,1);
+  if(S.infer>=0){
+    const p=clamp((S.t-S.inferT0)/S.inferD,0,1),y=p*450;
+    const lg=ovg.createLinearGradient(0,y-40,0,y);lg.addColorStop(0,'rgba(62,207,142,0)');lg.addColorStop(1,'rgba(62,207,142,.45)');
+    ovg.fillStyle=lg;ovg.fillRect(0,y-40,800,40);ovg.fillStyle='#3ecf8e';ovg.fillRect(0,y-1,800,2);
+    ovg.font='600 13px IBM Plex Mono, monospace';ovg.fillText('VISION AGENT · INFERRING '+Math.round(p*100)+'%',280,214);
+  }
+}
+
+/* ---------------- top-view simulation canvas ---------------- */
+const simC=$('sim'),sg=simC.getContext('2d');
+simC.width=960*DPR;simC.height=540*DPR;
+function armPoint(th,r){return{x:BASE.x+Math.cos(th)*r,y:BASE.y+Math.sin(th)*r};}
+function drawWaferDisc(g,x,y,r,coated,tint){
+  const wg=g.createRadialGradient(x-10,y-10,3,x,y,r);wg.addColorStop(0,'#d9dde2');wg.addColorStop(1,'#8a9099');
+  g.beginPath();g.arc(x,y,r,0,2*PI);g.fillStyle=wg;g.fill();
+  if(coated){g.beginPath();g.arc(x,y,r*.92,0,2*PI);g.fillStyle='rgba(222,128,30,.4)';g.fill();}
+  g.strokeStyle='#5d6670';g.lineWidth=1;g.beginPath();g.arc(x,y,r,0,2*PI);g.stroke();
+  g.beginPath();g.moveTo(x-3,y+r);g.lineTo(x+3,y+r);g.lineTo(x,y+r-5);g.fillStyle='#4a525a';g.fill();
+}
+function drawSim(){
+  const g=sg;g.setTransform(DPR,0,0,DPR,0,0);g.clearRect(0,0,960,540);
+  g.fillStyle='#0c141b';g.fillRect(0,0,960,540);
+  g.strokeStyle='rgba(76,195,217,.05)';g.lineWidth=1;for(let x=0;x<=960;x+=40){g.beginPath();g.moveTo(x,0);g.lineTo(x,540);g.stroke();}for(let y=0;y<=540;y+=40){g.beginPath();g.moveTo(0,y);g.lineTo(960,y);g.stroke();}
+  rr(g,16,44,928,480,10);g.fillStyle='rgba(242,182,50,.045)';g.fill();g.strokeStyle=V('--line2');g.lineWidth=1.5;g.stroke();
+  g.font='500 11px IBM Plex Mono, monospace';g.fillStyle=V('--mute');g.textBaseline='alphabetic';
+  g.fillText('YELLOW-ROOM COATER BAY · TOP VIEW',30,36);
+  // cassette
+  rr(g,48,170,150,200,8);g.fillStyle='#101a23';g.fill();g.strokeStyle=V('--line2');g.stroke();
+  for(let i=0;i<9;i++){g.strokeStyle='#1d2b37';g.beginPath();g.moveTo(54,184+i*21);g.lineTo(192,184+i*21);g.stroke();}
+  g.fillStyle=V('--mute');g.fillText('CASSETTE · 25 SLOTS',52,162);
+  if(!(S.wafer&&S.wafer.loc==='arm'&&Math.abs(S.arm.th-PI)<.3&&S.arm.r>200))drawWaferDisc(g,130,270,34,false);
+  else{g.beginPath();g.arc(130,270,34,0,2*PI);g.strokeStyle='#33444f';g.setLineDash([4,4]);g.stroke();g.setLineDash([]);}
+  // coater
+  g.beginPath();g.arc(670,270,84,0,2*PI);g.fillStyle='#0f1a23';g.fill();g.strokeStyle=V('--line2');g.lineWidth=2;g.stroke();
+  g.beginPath();g.arc(670,270,58,0,2*PI);g.strokeStyle='#26384a';g.lineWidth=1.5;g.stroke();
+  g.fillStyle=V('--mute');g.fillText('COATER · SPIN CHUCK',596,170);
+  const cw=S.wafer&&S.wafer.loc==='chuck'?S.wafer:null;
+  if(cw){drawWaferDisc(g,670,270,36,cw.coated||S.coating&&S.coatT>500);
+    if(S.coating){g.save();g.translate(670,270);g.rotate(S.spin);g.strokeStyle='rgba(30,30,30,.55)';g.lineWidth=2;for(let i=0;i<4;i++){g.rotate(PI/2);g.beginPath();g.moveTo(12,0);g.lineTo(30,0);g.stroke();}g.restore();
+      if(S.coatT<700){g.strokeStyle='rgba(235,140,40,.9)';g.lineWidth=3;g.beginPath();g.moveTo(742,196);g.lineTo(676,262);g.stroke();}}}
+  else{g.save();g.translate(670,270);g.rotate(S.spin);g.strokeStyle='#33485b';g.lineWidth=2;for(let i=0;i<4;i++){g.rotate(PI/2);g.beginPath();g.moveTo(12,0);g.lineTo(36,0);g.stroke();}g.restore();}
+  g.strokeStyle='#3a4e60';g.lineWidth=5;g.lineCap='round';g.beginPath();g.moveTo(790,150);g.lineTo(742,196);g.stroke();g.lineCap='butt';
+  g.beginPath();g.arc(742,196,5,0,2*PI);g.fillStyle='#546b80';g.fill();
+  // CCD field of view
+  const home=armPoint(TH.home,R.home),fx=home.x-100,fy=home.y-94;
+  if(S.flash>0){g.fillStyle='rgba(255,255,255,'+(S.flash*.4).toFixed(3)+')';g.fillRect(fx,fy,200,188);g.strokeStyle='rgba(242,182,50,'+S.flash.toFixed(3)+')';g.lineWidth=3;g.strokeRect(fx-(1-S.flash)*20,fy-(1-S.flash)*20,200+(1-S.flash)*40,188+(1-S.flash)*40);}
+  g.setLineDash([7,5]);g.strokeStyle=V('--amber');g.lineWidth=1.5;g.strokeRect(fx,fy,200,188);g.setLineDash([]);
+  g.strokeStyle=V('--amber');g.lineWidth=3;[[fx,fy,1,1],[fx+200,fy,-1,1],[fx,fy+188,1,-1],[fx+200,fy+188,-1,-1]].forEach(([x,y,a,b])=>{g.beginPath();g.moveTo(x,y+14*b);g.lineTo(x,y);g.lineTo(x+14*a,y);g.stroke();});
+  g.fillStyle=V('--amber');g.fillText('CCD FOV 50 × 47 cm · 72 cm above pad',fx-6,fy+204);
+  rr(g,fx+206,fy-2,34,20,3);g.fillStyle='#1a2733';g.fill();g.strokeStyle=V('--amber');g.lineWidth=1.2;g.stroke();
+  g.beginPath();g.arc(fx+223,fy+8,5,0,2*PI);g.stroke();g.fillText('CCD',fx+244,fy+13);
+  // arm
+  const P=armPoint(S.arm.th,S.arm.r),a=Math.acos(clamp(S.arm.r/(2*LK),-1,1)),side=S.arm.th>PI/4&&S.arm.th<3*PI/4?1:-1;
+  const E={x:BASE.x+Math.cos(S.arm.th+a*side)*LK,y:BASE.y+Math.sin(S.arm.th+a*side)*LK};
+  g.lineCap='round';g.lineWidth=15;g.strokeStyle='#34495c';g.beginPath();g.moveTo(BASE.x,BASE.y);g.lineTo(E.x,E.y);g.stroke();
+  g.lineWidth=12;g.strokeStyle='#40586d';g.beginPath();g.moveTo(E.x,E.y);g.lineTo(P.x,P.y);g.stroke();g.lineCap='butt';
+  g.beginPath();g.arc(BASE.x,BASE.y,24,0,2*PI);g.fillStyle='#22313e';g.fill();g.strokeStyle=V('--line2');g.lineWidth=2;g.stroke();
+  g.beginPath();g.arc(E.x,E.y,8,0,2*PI);g.fillStyle='#5b7389';g.fill();
+  g.save();g.translate(P.x,P.y);g.rotate(S.arm.th);rr(g,-36,-21,72,42,6);g.fillStyle='#d6cb98';g.fill();g.strokeStyle='#7c7236';g.lineWidth=1.2;g.stroke();
+  [[-20,-10],[-20,10],[14,-10],[14,10]].forEach(c=>{g.beginPath();g.arc(c[0],c[1],3.2,0,2*PI);g.fillStyle='#262514';g.fill();});g.restore();
+  const aw=S.wafer&&S.wafer.loc==='arm'?S.wafer:null;
+  if(aw){drawWaferDisc(g,P.x,P.y,34,aw.coated);}
+  if(aw&&aw.broken||S.wafer&&S.wafer.broken){const w=S.wafer;g.strokeStyle='#ff5d4d';g.lineWidth=2;g.beginPath();g.moveTo(P.x-30,P.y-12);g.lineTo(P.x-4,P.y+2);g.lineTo(P.x+8,P.y-14);g.moveTo(P.x-4,P.y+2);g.lineTo(P.x+6,P.y+26);g.moveTo(P.x+8,P.y-14);g.lineTo(P.x+32,P.y-6);g.stroke();}
+  if(S.truth){
+    if(S.resid.length){g.beginPath();g.arc(P.x,P.y,44,0,2*PI);g.setLineDash([3,4]);g.strokeStyle='#4cc3d9';g.lineWidth=1.3;g.stroke();g.setLineDash([]);g.fillStyle='#4cc3d9';g.fillText('PR on pad ×'+S.resid.length,P.x+46,P.y-30);}
+    if(S.wafer&&S.wafer.bs){g.fillStyle='#e08a2e';g.fillText('backside PR',(S.wafer.loc==='chuck'?670:P.x)-30,(S.wafer.loc==='chuck'?270:P.y)+54);}
+  }
+  g.fillStyle=V('--mute');g.fillText('ROBOT',BASE.x-18,BASE.y+42);
+  if(S.machine==='ALARM'){const p=.5+.5*Math.sin(performance.now()/160);g.strokeStyle='rgba(255,93,77,'+(.35+.5*p).toFixed(2)+')';g.lineWidth=5;g.strokeRect(3,3,954,534);
+    g.font='700 26px Barlow Condensed, Arial Narrow, sans-serif';g.fillStyle='#ff5d4d';g.fillText('MACHINE STOPPED',380,100);}
+}
+
+/* ---------------- flow steps ---------------- */
+function setStep(n,cls){S.step=n;S.stepCls=cls||'';const lis=$('flow').children;
+  for(let i=0;i<lis.length;i++){lis[i].className=n<0?'':i<n?'done':i===n?('on '+(cls||'')):'';}
+  if(n<4)$('f4').firstChild.nextSibling.textContent='Pass / stop + alert EE';}
+
+/* ---------------- wafer cycle ---------------- */
+function lotInfo(){const n=S.waferNo,lot='LOT'+(4210+Math.floor((n-1)/25)),slot=((n-1)%25)+1;return{lot,slot,id:lot+'-'+String(slot).padStart(2,'0')};}
+function padEmpty(){return !(S.wafer&&S.wafer.loc==='arm');}
+function area(){return S.resid.reduce((s,b)=>s+PI*b.r*b.r,0);}
+function deposit(){
+  const n=1+(Math.random()<.45?1:0)+(Math.random()<S.wear?1:0);
+  for(let i=0;i<n;i++){const c=CUPS[Math.random()<.6?2+((Math.random()*2)|0):(Math.random()*4)|0];
+    S.resid.push({x:c[0]+rnd(-9,9),y:c[1]+rnd(-9,9),r:rnd(.8,1.3+2.4*S.wear),s:Array.from({length:10},Math.random)});}
+  log('SIM','backside PR transferred to pad: '+n+' spot(s), '+area().toFixed(1)+' mm² on pad');
+}
+function stickCheck(where){
+  const A=area();
+  if(A>0&&Math.random()<Math.min(.85,A/50)){breakage(where);return true;}
+  return false;
+}
+async function waferCycle(tok){
+  const ok=()=>tok===S.token;
+  S.waferNo++;const L=lotInfo();
+  const w=S.wafer={id:L.id,loc:'cass',bs:Math.random()<S.bs,coated:false};
+  setStep(-1);
+  log('TOOL',L.id+' start · arm → cassette');
+  await armTo(TH.cass,R.cass,1100);if(!ok())return;
+  await gate();if(!ok())return;
+  await sleep(250);if(!ok())return;
+  if(stickCheck('cassette pick'))return;
+  w.loc='arm';S.sens.arm=true;setStep(0);
+  log('SENSOR','S1 arm wafer-present = 1 · wafer arrives on handling arm');
+  if(w.bs&&Math.random()<.35+.65*S.wear)deposit();
+  await sleep(200);if(!ok())return;
+  await armTo(TH.chuck,R.chuck,1300);if(!ok())return;
+  await sleep(280);if(!ok())return;
+  w.loc='chuck';S.sens.arm=false;S.sens.chuck=true;setStep(1);
+  log('SENSOR','S2 chuck wafer-present = 1 · transfer complete · pad empty');
+  await armTo(TH.home,R.home,900);if(!ok())return;
+  await sleep(300);if(!ok())return;
+  const jobs=[];
+  if(S.mode==='sensor')jobs.push(trigger('sensor'));
+  jobs.push(coat(ok));
+  await Promise.all(jobs);if(!ok())return;
+  w.coated=true;
+  await gate();if(!ok())return;
+  await armTo(TH.chuck,R.chuck,1000);if(!ok())return;
+  await sleep(250);if(!ok())return;
+  if(stickCheck('chuck pick'))return;
+  w.loc='arm';S.sens.chuck=false;S.sens.arm=true;
+  await armTo(TH.cass,R.cass,1300);if(!ok())return;
+  await sleep(250);if(!ok())return;
+  S.sens.arm=false;S.wafer=null;S.st.done++;
+  log('TOOL',L.id+' coated · returned to cassette');
+  await armTo(TH.home,R.home,900);
+}
+async function coat(ok){
+  S.coating=true;S.coatT=0;log('TOOL','PR dispense + spin coat');
+  while(S.coatT<2600){await sleep(100);if(!ok())break;if(S.machine==='RUN')S.coatT+=100;}
+  S.coating=false;
+}
+async function cycleLoop(){
+  for(;;){
+    await gate();const tok=++S.token;
+    try{await waferCycle(tok);}catch(err){console.error(err);await sleep(500);}
+  }
+}
+async function streamLoop(){
+  for(;;){await sleep(1400);if(S.mode==='stream'&&S.machine==='RUN'&&!S.busy&&padEmpty())trigger('stream');}
+}
+
+/* ---------------- trigger → vision → agents ---------------- */
+function nearestCup(b){let bi=0,bd=1e9;CUPS.forEach((c,i)=>{const d=(c[0]-b.x)**2+(c[1]-b.y)**2;if(d<bd){bd=d;bi=i;}});return bi;}
+function vision(e,qq){
+  const boxes=[];
+  for(const b of S.resid){
+    const dpx=2*b.r/e.gsd,p=clamp((dpx-3)/7,0,1)*(.35+.65*qq.q);
+    if(Math.random()<p){boxes.push({x:b.x+rnd(-.1,.1)*b.r,y:b.y+rnd(-.1,.1)*b.r,hs:b.r*1.3,conf:clamp(.5+.45*clamp(dpx/14,0,1)*(.5+.5*qq.q)+rnd(-.04,.04),.5,.99),mm:2*b.r,truth:true,dpx});}
+  }
+  if(qq.q<.4&&Math.random()<(.4-qq.q)*1.1){const x=rnd(-60,40),y=rnd(-30,30),r=rnd(.8,1.6);boxes.push({x,y,hs:r*1.3,conf:rnd(.5,.78),mm:2*r,truth:false,dpx:2*r/e.gsd});}
+  boxes.forEach(b=>b.cup=nearestCup(b));
+  const alert=boxes.filter(b=>b.conf>=S.thr),ar=alert.reduce((s,b)=>s+PI*(b.mm/2)**2,0);
+  const cls=alert.length?'ABNORMAL':'NORMAL';
+  const conf=alert.length?Math.max(...alert.map(b=>b.conf)):clamp(.82+.17*qq.q-boxes.length*.05,.5,.99);
+  return{cls,boxes,alert,area:ar,conf};
+}
+function thumb(withBoxes,boxes,e,q){
+  const c=document.createElement('canvas');c.width=224;c.height=126;const g=c.getContext('2d');
+  try{if('filter' in g)g.filter=camFilter(e,q);}catch(_){}
+  g.drawImage(camC,0,0,224,126);try{g.filter='none';}catch(_){}
+  if(withBoxes&&boxes.length)drawBoxes(g,boxes,224/800);
+  return c;
+}
+function addCap(c,label){
+  let url='';try{url=c.toDataURL('image/jpeg',.72);}catch(_){}
+  S.caps.unshift({url,label});S.caps=S.caps.slice(0,6);renderCaps();
+}
+async function trigger(src){
+  if(S.busy){sdkLine('! trigger ignored: acquisition busy','warn');return null;}
+  const e=eff(),qq=quality(e);
+  drawCam(e);S.busy=true;S.boxes=[];S.frame++;
+  const fid=S.frame,imgId='IMG_'+dateTag()+'_'+clock().replace(/:/g,'')+'_'+String(fid).padStart(4,'0');
+  S.flash=1;setStep(2);
+  sdkLine('cam.trigger("'+src+'") → frame #'+fid+'  '+C.w+'×'+C.h+'  exp '+e.exp.toFixed(2)+' ms  gain '+C.gain+' dB');
+  log('CCD','trigger fired ('+src+') · frame #'+fid+' · '+C.w+'×'+C.h+' @ '+e.exp.toFixed(1)+' ms');
+  await sleep(80+e.exp);
+  const occluded=!padEmpty();
+  setStep(3);S.infer=0;S.inferT0=S.t;S.inferD=550+rnd(0,300)+e.px/8.3e6*250;
+  $('vPill').className='pill warn';$('vPill').textContent='INFERRING';$('vConf').textContent='';
+  await sleep(S.inferD);S.infer=-1;
+  let r;
+  if(occluded)r={cls:'SKIPPED',boxes:[],alert:[],area:0,conf:0};
+  else r=vision(e,qq);
+  r.src=src;r.id=imgId;r.e=e;r.q=qq.q;r.fid=fid;r.wafer=S.wafer?S.wafer.id:'—';
+  r.kb=Math.round(e.px*3/14/1000);r.path='/B7_EAP/ACS200G3/CCD/'+dateTag()+'/'+imgId+'.jpg';
+  r.truthN=S.resid.length;
+  r.dup=S.machine==='ALARM';
+  S.boxes=r.boxes;S.freezeUntil=S.t+2800;
+  const tc=thumb(true,r.boxes,e,qq);addCap(tc,'#'+fid+' '+src+' · '+r.cls);
+  const lc=$('lastC').getContext('2d');lc.drawImage(tc,0,0);
+  $('lastCap').textContent='Frame #'+fid+' · '+src;
+  S.lastResult=r;showVerdict(r,qq);
+  if(r.cls!=='SKIPPED')S.st.insp++;
+  if(r.cls==='ABNORMAL'){
+    if(r.truthN>0)S.st.caught++;else S.st.fa++;
+    log('VISION',r.cls+' · '+r.alert.length+' PR residue box(es) · conf '+r.conf.toFixed(2)+' · '+r.area.toFixed(1)+' mm²','bad');
+    setStep(4,'bad');$('f4').firstChild.nextSibling.textContent='STOP · alert EE';
+    if(!r.dup)stopMachine(r);
+  }else if(r.cls==='NORMAL'){
+    if(r.truthN>0){S.st.miss++;log('SIM','camera missed '+r.truthN+' residue spot(s) on the pad','warn');}
+    log('VISION','NORMAL pad · conf '+r.conf.toFixed(2)+' · image quality '+(qq.q*100).toFixed(0)+'%','ok');
+    setStep(4,'ok');$('f4').firstChild.nextSibling.textContent='Pad OK · continue';
+  }else{
+    log('VISION','SKIPPED · pad occupied by wafer, frame stored only','warn');setStep(4,'');
+  }
+  S.busy=false;
+  pipeline(r);
+  return r;
+}
+function showVerdict(r,qq){
+  const p=$('vPill');
+  if(r.cls==='ABNORMAL'){p.className='pill bad';p.textContent='ABNORMAL PAD';}
+  else if(r.cls==='NORMAL'){p.className='pill ok';p.textContent='NORMAL PAD';}
+  else{p.className='pill';p.textContent='SKIPPED';}
+  $('vConf').textContent=r.cls==='SKIPPED'?'wafer on pad':'conf '+r.conf.toFixed(2)+' · IQI '+(qq.q*100).toFixed(0)+'%';
+  $('vBoxes').innerHTML=r.boxes.map((b,i)=>'<li>#'+(i+1)+' '+(b.conf>=S.thr?'PR residue':'below threshold')+' '+b.conf.toFixed(2)+' · Ø'+b.mm.toFixed(1)+' mm · '+b.dpx.toFixed(1)+' px'+(b.truth?'':' · glare')+'</li>').join('')||'<li>no residue boxes</li>';
+  $('lVis').className='lamp '+(r.cls==='ABNORMAL'?'bad':'ok');
+}
+
+/* ---------------- machine stop, EE, factory pipeline ---------------- */
+function showAlarm(t,m){$('alT').textContent=t;$('alM').textContent=m;$('alarm').hidden=false;$('eeAck').disabled=false;updRepl();}
+function updRepl(){const b=$('eeRepl');b.disabled=S.stock.C<4||S.fixing;b.title=S.stock.C<4?'Type C stock below 4. Receive stock first.':'';$('eeClean').disabled=S.fixing;}
+function stopMachine(r){
+  S.machine='ALARM';S.alarm={kind:'RESIDUE',ack:false,aid:null};
+  showAlarm('Machine stopped · PR residue on robot pad','Vision Agent flagged '+r.alert.length+' spot(s), '+r.area.toFixed(1)+' mm², confidence '+r.conf.toFixed(2)+'. EE is being notified through CIM / MES. Clean the pad or replace the nozzles, then resume.');
+  log('TOOL','ALARM · machine stop · alert EE','bad');
+  $('lHl').className='lamp warn';
+}
+function breakage(where){
+  S.token++;S.st.brk++;if(S.wafer)S.wafer.broken=true;S.machine='ALARM';S.alarm={kind:'BREAK',ack:false,aid:null};
+  S.sens.arm=false;
+  showAlarm('Wafer breakage at '+where,'Residue on the pad was not caught, the wafer stuck to the pad and shifted. Machine stopped. Better exposure, focus or resolution gives the Vision Agent a better chance.');
+  log('TOOL','ALARM · wafer stuck to pad at '+where+' · wafer shift / breakage '+(S.wafer?S.wafer.id:''),'bad');
+  const o=openSetup('Wafer breakage recovery');
+  log('MES','SETUP '+o.no+' opened · scrap wafer '+(S.wafer?S.wafer.id:'')+' · pad inspection required','bad');
+  notify('Warehouse: prepare 4× nozzle type C for '+o.no);
+}
+function openOrder(){return S.orders.find(o=>o.st==='OPEN');}
+function openSetup(reason){
+  const ex=openOrder();if(ex)return ex;
+  const o={no:'SU-26110'+String(++S.setup).padStart(2,'0'),reason,st:'OPEN',t:clock()};
+  S.orders.unshift(o);S.orders=S.orders.slice(0,8);renderOrders();return o;
+}
+function stockState(q){return q>16?['OK','good']:q>8?['LOW','warnt']:['REORDER','badt'];}
+function notify(msg){
+  S.notes.unshift(clock()+' '+msg);S.notes=S.notes.slice(0,4);renderNotes();
+  log('NOTES',msg);
+  const c=S.stock.C;if(c<=8)log('NOTES','type C stock '+c+' is at or below the reorder point · replenishment requested','warn');
+}
+async function pipeline(r){
+  await sleep(180);
+  S.eap.n++;S.eap.mb+=r.kb/1024;S.eap.recent.unshift(r.path.split('/').pop()+' · '+r.cls);S.eap.recent=S.eap.recent.slice(0,4);renderEap();
+  log('EAP','B7 EAP host DB ← INSERT '+r.path+' ('+r.kb+' KB, overlay burned in) · result '+r.cls);
+  if(r.cls==='SKIPPED')return;
+  await sleep(220);
+  S.rows.unshift({t:clock(),w:r.wafer,cls:r.cls,conf:r.conf,area:r.area});S.rows=S.rows.slice(0,40);renderRows();
+  log('RPA','AI Result log + 1 row · '+r.wafer+' · '+r.cls+' · conf '+r.conf.toFixed(2));
+  if(r.cls==='ABNORMAL'||S.st.insp%5===0){S.uploads++;$('rpaUp').textContent='Meta BI uploads: '+S.uploads;log('RPA','AI_Result_log.xlsx → Meta BI upload OK ('+S.rows.length+' rows)');}
+  await sleep(200);
+  healthUpdate(r);
+  if(r.cls!=='ABNORMAL'||r.dup)return;
+  const aid='AID-'+dateTag()+'-'+String(++S.aid).padStart(4,'0');if(S.alarm)S.alarm.aid=aid;
+  await sleep(450);
+  $('aidTxt').textContent='Last AID: '+aid+' · sent by RPA at '+clock();
+  log('CIM','RPA → CIM Web Service (RTHM): '+aid+' · PR residue on ACS200G3 robot pad · HTTP 200','bad');
+  await sleep(450);
+  log('RTHM','AID '+aid+' received · trigger MES SETUP/Repair');
+  const o=openSetup('PR residue on robot pad');
+  await sleep(500);
+  log('MES','MES Navigator · SETUP order '+o.no+' opened · notify EE','warn');
+  if(S.alarm)$('alM').textContent+=' AID '+aid+' · '+o.no+'.';
+  await sleep(400);
+  notify('Warehouse: prepare 4× nozzle type C for '+o.no);
+  await sleep(300);
+  excelReport();
+}
+function excelReport(){
+  const s=S.stock;log('XLS','nozzle_inventory_'+dateTag()+'.xlsx generated · A '+s.A+' · B '+s.B+' · C '+s.C+' · D '+s.D);
+}
+function healthUpdate(r){
+  S.hist.push({area:r.area,abn:r.cls==='ABNORMAL'?1:0});S.sinceMaint++;
+  r.alert.forEach(b=>S.cupHits[b.cup]++);
+  const last=S.hist.slice(-8),abn=last.reduce((s,h)=>s+h.abn,0)/last.length;
+  S.estWear=.6*S.estWear+.4*clamp(r.area/12,0,1.5);
+  const h=clamp(100-50*abn-35*Math.min(1,S.estWear)-15*Math.min(1,S.sinceMaint/40),0,100);
+  S.health.push(h);
+  const n=Math.min(6,S.health.length),ys=S.health.slice(-n);let sx=0,sy=0,sxy=0,sxx=0;
+  ys.forEach((y,i)=>{sx+=i;sy+=y;sxy+=i*y;sxx+=i*i;});
+  const slope=(n*sxy-sx*sy)/Math.max(1e-6,n*sxx-sx*sx);
+  S.slope=slope;
+  const stt=h>=75?'GOOD':h>=50?'WATCH':'PM REQUIRED';
+  log('HEALTH','pad health '+h.toFixed(0)+' ('+stt+') · trend '+(slope<-.4?'falling':slope>.4?'recovering':'steady'),h<50?'bad':h<75?'warn':'');
+  if(h<50&&!openOrder()){
+    const o=openSetup('AI Health Agent: preventive PM');
+    log('HEALTH','auto-trigger SETUP '+o.no+' · pad PM before the next breakage','warn');
+    log('MES','SETUP order '+o.no+' opened by AI Health Agent','warn');
+    notify('Warehouse: prepare 4× nozzle type C for '+o.no);
+  }
+  renderHealth();
+}
+
+/* EE actions */
+function eeAck(){
+  if(!S.alarm||S.alarm.ack)return;S.alarm.ack=true;$('eeAck').disabled=true;
+  log('MES','EE acknowledged alarm'+(S.alarm.aid?' · '+S.alarm.aid:''),'ok');
+}
+async function eeFix(kind){
+  if(!S.alarm||S.fixing)return;
+  if(kind==='repl'&&S.stock.C<4){log('NOTES','cannot replace: type C stock below 4','warn');return;}
+  S.fixing=true;updRepl();
+  if(!S.alarm.ack)eeAck();
+  log('TOOL','EE: '+(kind==='clean'?'robot pad wiped clean':'4 suction nozzles replaced (type C)'),'ok');
+  S.resid=[];
+  if(S.wafer&&S.wafer.broken){S.wafer=null;S.sens.chuck=false;S.sens.arm=false;}
+  if(kind==='repl'){
+    S.stock.C-=4;S.wear=.05;$('wear').value=5;$('wearO').textContent='5%';S.estWear=0;S.sinceMaint=0;S.cupHits=[0,0,0,0];
+    renderStock();log('NOTES','type C stock now '+S.stock.C);if(S.stock.C<=8)notify('Type C below reorder point · replenish');
+    renderHealth();
+  }
+  const o=openOrder();if(o){o.st='CLOSED';renderOrders();log('MES','SETUP '+o.no+' closed by EE · RTHM notified','ok');}
+  S.machine='HOLD';S.boxes=[];S.freezeUntil=0;
+  armTo(TH.home,R.home,900);
+  await sleep(1200);
+  log('TOOL','verification shot on cleaned pad');
+  const r=await trigger('verify');
+  if(r&&r.cls==='NORMAL'){S.machine='RUN';S.alarm=null;$('alarm').hidden=true;$('lHl').className='lamp ok';log('TOOL','machine released · pad verified','ok');}
+  else if(r&&r.cls==='ABNORMAL'){log('TOOL','verification failed · pad still flagged','bad');showAlarm('Verification failed','The cleaned pad was still flagged. Clean again or replace the nozzles.');}
+  else{S.machine='RUN';S.alarm=null;$('alarm').hidden=true;}
+  S.fixing=false;updRepl();
+}
+
+/* ---------------- renderers ---------------- */
+function renderCaps(){
+  $('caps').innerHTML=S.caps.length?S.caps.map(c=>'<figure><img alt="" src="'+c.url+'"><figcaption>'+c.label+'</figcaption></figure>').join(''):'<span class="hint">No frames yet. A trigger or snapshot adds one here.</span>';
+}
+function renderRows(){
+  $('rpaRows').innerHTML=S.rows.slice(0,5).map(r=>'<tr><td>'+r.t+'</td><td>'+r.w+'</td><td class="'+(r.cls==='ABNORMAL'?'badt':'good')+'">'+r.cls+'</td><td>'+r.conf.toFixed(2)+'</td><td>'+r.area.toFixed(1)+'</td></tr>').join('')||'<tr><td colspan="5" class="hint">No inspections yet</td></tr>';
+}
+function renderOrders(){
+  $('ordRows').innerHTML=S.orders.map(o=>'<tr><td>'+o.no+'</td><td>'+o.reason+'</td><td class="'+(o.st==='OPEN'?'warnt':'good')+'">'+o.st+'</td></tr>').join('')||'<tr><td colspan="3" class="hint">No SETUP orders</td></tr>';
+}
+function renderStock(){
+  $('stockRows').innerHTML=Object.entries(S.stock).map(([k,q])=>{const s=stockState(q);return'<tr><td>Nozzle type '+k+(k==='C'?' (pad)':'')+'</td><td>'+q+'</td><td class="'+s[1]+'">'+s[0]+'</td></tr>';}).join('');
+  updRepl();
+}
+function renderNotes(){$('noteList').innerHTML=S.notes.map(n=>'<li>'+n+'</li>').join('');}
+function renderEap(){
+  $('eapN').textContent=S.eap.n+' images';$('eapMB').textContent=S.eap.mb.toFixed(1)+' MB';
+  $('eapList').innerHTML=S.eap.recent.map(x=>'<li>'+x+'</li>').join('')||'<li>waiting for the first frame</li>';
+}
+function renderHealth(){
+  const h=S.health[S.health.length-1];
+  $('hVal').textContent=h.toFixed(0);$('hVal').style.color=h>=75?V('--ok'):h>=50?V('--warn'):V('--bad');
+  $('hTxt').textContent=h>=75?'GOOD · no action':h>=50?'WATCH · schedule check':'PM REQUIRED';
+  const sl=S.slope||0;
+  $('hPred').textContent=sl<-.3&&h>50?'Trend falling: about '+Math.max(1,Math.round((h-50)/-sl))+' inspections to PM threshold (50).':sl<-.3?'Trend falling, below PM threshold.':'Trend steady. Health 50 triggers a preventive SETUP order.';
+  const mx=Math.max(1,...S.cupHits);
+  $('cups').innerHTML=S.cupHits.map((n,i)=>'<div class="cup"><span>Cup '+(i+1)+'</span><div class="meter"><i class="'+(n>=3?'bad':'')+'" style="width:'+Math.round(n/Math.max(mx,3)*100)+'%"></i></div><span>'+n+' hit'+(n===1?'':'s')+'</span></div>').join('');
+  $('lHl').className='lamp '+(h>=75?'ok':h>=50?'warn':'bad');
+  drawCharts();
+}
+function chartBase(c){
+  const g=c.getContext('2d');g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,360,84);return g;
+}
+function drawCharts(){
+  const N=20,mono='10px IBM Plex Mono, monospace';
+  // residue area
+  let g=chartBase($('chA')),d=S.hist.slice(-N),mx=Math.max(12,...d.map(x=>x.area))*1.15;
+  g.font=mono;g.fillStyle=V('--mute');g.fillText('residue area, mm² per inspection',34,10);
+  g.strokeStyle='#1d2a36';g.lineWidth=1;[0,.5,1].forEach(f=>{const y=72-f*52;g.beginPath();g.moveTo(32,y);g.lineTo(356,y);g.stroke();g.fillStyle=V('--mute');g.textAlign='right';g.fillText((mx*f).toFixed(0),28,y+3);});g.textAlign='left';
+  const bw=(324/N);d.forEach((x,i)=>{const hh=x.area/mx*52,xx=32+(N-d.length+i)*bw+2;g.fillStyle=x.abn?V('--bad'):V('--ok');g.globalAlpha=x.abn?1:.55;g.fillRect(xx,72-Math.max(hh,1.5),bw-4,Math.max(hh,1.5));g.globalAlpha=1;});
+  // health
+  g=chartBase($('chH'));const hs=S.health.slice(-N);
+  g.font=mono;g.fillStyle=V('--mute');g.fillText('pad health score (0–100)',34,10);
+  [[100,''],[75,'watch'],[50,'PM']].forEach(([v,l])=>{const y=72-v/100*52;g.strokeStyle=v===50?'#6b2a22':'#1d2a36';g.setLineDash(v===50?[4,3]:[]);g.beginPath();g.moveTo(32,y);g.lineTo(356,y);g.stroke();g.setLineDash([]);g.fillStyle=V('--mute');g.textAlign='right';g.fillText(String(v),28,y+3);g.textAlign='left';});
+  const xs=i=>32+(N-hs.length+i)*(324/(N-1)),ys=v=>72-v/100*52;
+  g.beginPath();hs.forEach((v,i)=>i?g.lineTo(xs(i),ys(v)):g.moveTo(xs(i),ys(v)));g.lineTo(xs(hs.length-1),72);g.lineTo(xs(0),72);g.closePath();g.fillStyle='rgba(76,195,217,.14)';g.fill();
+  g.beginPath();hs.forEach((v,i)=>i?g.lineTo(xs(i),ys(v)):g.moveTo(xs(i),ys(v)));g.strokeStyle=V('--info');g.lineWidth=1.8;g.stroke();
+  const lv=hs[hs.length-1];g.beginPath();g.arc(xs(hs.length-1),ys(lv),3.4,0,2*PI);g.fillStyle=lv>=75?V('--ok'):lv>=50?V('--warn'):V('--bad');g.fill();
+}
+
+/* ---------------- camera UI ---------------- */
+function fillSelects(){
+  const m=MODELS[C.model];
+  $('model').innerHTML=Object.entries(MODELS).map(([k,v])=>'<option value="'+k+'"'+(k===C.model?' selected':'')+'>'+v.name+'</option>').join('');
+  const rs=RES_ALL.filter(([w,h])=>w<m.w&&h<m.h);rs.unshift([m.w,m.h]);
+  $('res').innerHTML=rs.map(([w,h])=>'<option value="'+w+'x'+h+'"'+(w===C.w?' selected':'')+'>'+w+' × '+h+'</option>').join('');
+  $('iface').innerHTML=m.ifs.map(i=>'<option'+(i===C.iface?' selected':'')+'>'+i+'</option>').join('');
+  $('fps').max=m.fps;$('focus').disabled=!m.focus;
+  const chips=m.lens>1?[['Snapshot',1],['H.264 record',1],['Fixed focus',0],['4K',0],['Wide 94° lens',0]]:[['Snapshot',1],['Record',1],['ISP sat/contrast',1],['Sharpening',0],['Digital zoom 3×',1],['SDK API',1],['HW overlay',0],['Overlay save',0],['Standalone (no PC)',0]];
+  $('capChips').innerHTML=chips.map(([n,y])=>'<span class="chip '+(y?'y':'n')+'">'+n+'</span>').join('');
+  $('specTxt').textContent=m.name.replace(/ \(.*/,'')+' · cell '+m.cell+' µm · '+m.fps+' fps max · '+m.size+' · '+m.ifs.join(' / ');
+}
+function syncCam(){
+  const e=eff();
+  $('fps').value=C.fps;$('fpsO').textContent=e.fps.toFixed(1)+' fps';
+  $('exp').value=sliderFromExp(C.exp);$('expO').textContent=e.exp.toFixed(2)+' ms';
+  $('gain').value=C.gain;$('gainO').textContent=C.gain+' dB';
+  $('focus').value=C.focus;$('focusO').textContent=C.focus;
+  $('zoom').value=C.zoom;$('zoomO').textContent=C.zoom.toFixed(1)+'×';
+  $('sat').value=C.sat;$('satO').textContent=C.sat.toFixed(2);
+  $('con').value=C.con;$('conO').textContent=C.con.toFixed(2);
+  const pct=e.raw/e.lim*100;$('linkBar').style.width=Math.min(100,pct)+'%';$('linkBar').className=pct>100?'bad':'';
+  $('linkTxt').textContent='Raw '+e.raw.toFixed(0)+' MB/s of '+e.lim+' MB/s ('+C.iface+')'+(pct>100?' · link-limited to '+e.fps.toFixed(1)+' fps':'')+(C.exp>e.exp+.01?' · exposure capped by frame time':'');
+  $('camTag').textContent=e.m.name.replace(/ \(.*/,'')+' · '+C.w+'×'+C.h+' · '+C.iface;
+  $('recBtn').textContent=C.rec?'Stop record':'Record';
+}
+function bindRange(id,fn,call){
+  const el=$(id);
+  el.addEventListener('input',()=>{fn(parseFloat(el.value));syncCam();});
+  el.addEventListener('change',()=>{echo(call());});
+}
+function setModel(k){
+  const m=MODELS[k];C.model=k;C.w=m.w;C.h=m.h;C.iface=m.ifs[0];C.fps=m.fps;if(!m.focus)C.focus=60;
+  fillSelects();syncCam();
+}
+function aeCalc(){const e=eff();C.exp=clamp(12/(Math.pow(10,C.gain/20)*e.sens),.125,33);}
+function snapshot(){
+  const e=eff(),q=quality(e);const c=thumb(false,[],e,q);addCap(c,'snap #'+(++S.frame)+' · local');
+  sdkLine('cam.snapshot() → frame buffer, '+C.w+'×'+C.h+' (not sent to Vision Agent)');
+}
+function setRec(on){
+  if(on===C.rec)return;C.rec=on;
+  if(on){C.recFrames=0;sdkLine('cam.record("start")');}
+  else{sdkLine('cam.record("stop") → clip_'+clock().replace(/:/g,'')+'.mp4 · '+Math.round(C.recFrames)+' frames');log('EAP','clip saved: '+Math.round(C.recFrames)+' frames');}
+  syncCam();
+}
+function manualTrigger(){echo('trigger("manual")');return trigger('manual');}
+function sdkExec(txt){
+  const cmd=txt.trim().replace(/^cam\./,'').replace(/;$/,'');if(!cmd)return;
+  sdkLine('> cam.'+cmd);
+  const m=cmd.match(/^(\w+)\((.*)\)$/);if(!m){sdkLine('! use name(args), e.g. setExposure(8)','warn');return;}
+  const fn=m[1],a=m[2].trim().replace(/["']/g,''),n=parseFloat(a);
+  const need=()=>{if(isNaN(n)){sdkLine('! numeric argument required','warn');return false;}return true;};
+  switch(fn){
+    case'help':sdkLine('trigger()  snapshot()  record(start|stop)  setExposure(ms)  setGain(dB)  setFps(n)  setFocus(0-100)  setZoom(1-3)  autoExposure()  getInfo()');break;
+    case'trigger':trigger('sdk');break;
+    case'snapshot':snapshot();break;
+    case'record':setRec(a!=='stop');break;
+    case'setExposure':if(need()){C.exp=clamp(n,.125,33);syncCam();sdkLine('OK exposure '+eff().exp.toFixed(2)+' ms','ok');}break;
+    case'setGain':if(need()){C.gain=clamp(n,0,24);syncCam();sdkLine('OK gain '+C.gain+' dB','ok');}break;
+    case'setFps':if(need()){C.fps=clamp(n,1,MODELS[C.model].fps);syncCam();sdkLine('OK fps '+eff().fps.toFixed(1),'ok');}break;
+    case'setFocus':if(need()){if(!MODELS[C.model].focus)sdkLine('! fixed focus lens','warn');else{C.focus=clamp(n,0,100);syncCam();sdkLine('OK focus '+C.focus,'ok');}}break;
+    case'setZoom':if(need()){C.zoom=clamp(n,1,3);syncCam();sdkLine('OK zoom '+C.zoom.toFixed(1)+'×','ok');}break;
+    case'autoExposure':aeCalc();syncCam();sdkLine('OK exposure '+eff().exp.toFixed(2)+' ms','ok');break;
+    case'getInfo':{const e=eff();sdkLine(e.m.name+' '+C.w+'×'+C.h+' '+e.fps.toFixed(1)+' fps '+C.iface+' GSD '+e.gsd.toFixed(3)+' mm/px');break;}
+    default:sdkLine('! unknown command '+fn+'. Try help()','warn');
+  }
+}
+
+/* ---------------- UI wiring ---------------- */
+const HINT={sensor:'Fires once per wafer. S1 arms on wafer arrival, the shot is taken after transfer completes and the pad is empty.',
+  stream:'Live stream. The Vision Agent samples the pad about every 1.4 s whenever the pad is empty.',
+  manual:'No automatic shots. Press Manual SDK trigger or run trigger() in the SDK console.'};
+document.querySelectorAll('input[name=mode]').forEach(r=>r.addEventListener('change',()=>{S.mode=r.value;$('modeHint').textContent=HINT[S.mode];sdkLine('trigger mode → '+S.mode);log('CCD','trigger mode: '+S.mode);}));
+$('modeHint').textContent=HINT.sensor;
+$('play').addEventListener('click',()=>{S.playing=!S.playing;$('play').textContent=S.playing?'Pause':'Run';});
+$('speed').addEventListener('change',e=>{S.speed=+e.target.value;});
+$('bs').addEventListener('input',e=>{S.bs=e.target.value/100;$('bsO').textContent=e.target.value+'%';});
+$('wear').addEventListener('input',e=>{S.wear=e.target.value/100;$('wearO').textContent=e.target.value+'%';});
+$('thr').addEventListener('input',e=>{S.thr=+e.target.value;$('thrO').textContent=S.thr.toFixed(2);});
+$('truth').addEventListener('change',e=>{S.truth=e.target.checked;});
+$('inject').addEventListener('click',()=>{const c=CUPS[(Math.random()*4)|0];S.resid.push({x:c[0]+rnd(-8,8),y:c[1]+rnd(-8,8),r:rnd(1,2.6),s:Array.from({length:10},Math.random)});log('SIM','residue injected on pad · '+S.resid.length+' spot(s)');});
+$('trig').addEventListener('click',manualTrigger);$('trig2').addEventListener('click',manualTrigger);
+$('eeAck').addEventListener('click',eeAck);$('eeClean').addEventListener('click',()=>eeFix('clean'));$('eeRepl').addEventListener('click',()=>eeFix('repl'));
+$('xlsBtn').addEventListener('click',()=>{excelReport();});
+$('recvBtn').addEventListener('click',()=>{S.stock.C+=20;renderStock();log('NOTES','warehouse received +20 nozzle type C · stock '+S.stock.C,'ok');});
+$('model').addEventListener('change',e=>{setModel(e.target.value);echo('open("'+MODELS[C.model].name.replace(/ \(.*/,'')+'")');});
+$('res').addEventListener('change',e=>{const[w,h]=e.target.value.split('x').map(Number);C.w=w;C.h=h;syncCam();echo('setResolution('+w+','+h+')');});
+$('iface').addEventListener('change',e=>{C.iface=e.target.value;syncCam();echo('setInterface("'+C.iface+'")');});
+bindRange('fps',v=>{C.fps=v;},()=>'setFps('+eff().fps.toFixed(1)+')');
+bindRange('exp',v=>{C.exp=expFromSlider(v);},()=>'setExposure('+C.exp.toFixed(2)+')');
+bindRange('gain',v=>{C.gain=v;},()=>'setGain('+C.gain+')');
+bindRange('focus',v=>{C.focus=v;},()=>'setFocus('+C.focus+')');
+bindRange('zoom',v=>{C.zoom=v;},()=>'setZoom('+C.zoom.toFixed(1)+')');
+bindRange('sat',v=>{C.sat=v;},()=>'setSaturation('+C.sat.toFixed(2)+')');
+bindRange('con',v=>{C.con=v;},()=>'setContrast('+C.con.toFixed(2)+')');
+$('aeBtn').addEventListener('click',()=>{aeCalc();syncCam();echo('autoExposure() → '+C.exp.toFixed(2)+' ms');});
+$('snapBtn').addEventListener('click',()=>{echo('snapshot()');snapshot();});
+$('recBtn').addEventListener('click',()=>{setRec(!C.rec);});
+document.querySelectorAll('.tabs button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('.tabs button').forEach(x=>x.setAttribute('aria-selected',x===b));
+  const sdk=b.dataset.tab==='sdk';$('termMain').hidden=sdk;$('termSdk').hidden=!sdk;$('sdkForm').hidden=!sdk;
+  if(sdk)$('termSdk').scrollTop=$('termSdk').scrollHeight;
+}));
+$('sdkForm').addEventListener('submit',e=>{e.preventDefault();sdkExec($('sdkIn').value);$('sdkIn').value='';});
+
+/* ---------------- main loop ---------------- */
+let last=performance.now(),lastCam=0,lastUi=0;
+function ui(e){
+  $('sDone').textContent=S.st.done;$('sInsp').textContent=S.st.insp;$('sCaught').textContent=S.st.caught;$('sFA').textContent=S.st.fa;$('sMiss').textContent=S.st.miss;$('sBrk').textContent=S.st.brk;
+  $('sScore').textContent=S.st.caught*100+S.st.done*5-S.st.brk*500-S.st.fa*25;
+  const st=!S.playing?'PAUSED':S.machine==='RUN'?'RUN':S.machine==='ALARM'?'STOPPED':'EE HOLD',cls=!S.playing?'warn':S.machine==='RUN'?'ok':S.machine==='ALARM'?'bad':'warn';
+  $('stText').textContent=st;$('stLamp').className='lamp '+cls;$('clock').textContent=clock();
+  $('l1').className='lamp '+(S.sens.arm?'ok':'');$('l2').className='lamp '+(S.sens.chuck?'ok':'');
+  const home=Math.abs(S.arm.th-TH.home)<.05&&Math.abs(S.arm.r-R.home)<4;$('l3').className='lamp '+(home?'ok':'');$('l4').className='lamp '+(S.busy?'amb':'');
+  const fr=isFrozen();
+  $('hudTL').textContent=(fr?'FRAME #'+S.frame+' HELD':'LIVE')+' · '+e.fps.toFixed(1)+' fps · '+C.w+'×'+C.h+' · exp '+e.exp.toFixed(2)+' ms · '+C.gain+' dB';
+  $('rec').className='rec'+(C.rec&&Math.floor(performance.now()/500)%2?' on':'');$('hudRec').textContent=C.rec?'REC '+Math.round(C.recFrames)+' f':'';
+  const q=S.q.q||0;$('iqBar').style.width=(q*100)+'%';$('iqBar').style.background=q>.7?V('--ok'):q>.4?V('--warn'):V('--bad');
+  $('hudIQ').textContent='Image quality '+(q*100).toFixed(0)+'%';
+  $('hudROI').textContent='ROI '+(200/C.zoom).toFixed(0)+'×'+(112.5/C.zoom).toFixed(0)+' mm · '+(e.gsd).toFixed(3)+' mm/px';
+}
+function loop(now){
+  const dt=Math.min(60,now-last);last=now;
+  if(S.playing)advance(dt*S.speed);
+  const e=eff();
+  if(C.rec)C.recFrames+=e.fps*dt/1000;
+  if(now-lastCam>1000/Math.min(e.fps,30)){lastCam=now;if(!isFrozen())drawCam(e);}
+  drawOverlay();drawSim();
+  if(now-lastUi>200){lastUi=now;ui(e);}
+  requestAnimationFrame(loop);
+}
+
+/* ---------------- boot ---------------- */
+fillSelects();syncCam();renderRows();renderOrders();renderStock();renderNotes();renderEap();renderHealth();renderCaps();
+{ // golden reference frame
+  const e=eff(),rc=document.createElement('canvas');rc.width=384;rc.height=216;
+  drawScene(rc.getContext('2d'),384,216,{L:1},{clean:true});
+  $('refC').getContext('2d').drawImage(rc,0,0,224,126);
+  $('lastC').getContext('2d').drawImage(rc,0,0,224,126);
+}
+log('EAP','B7 EAP host DB connected · AI CV platform deployed');
+log('CIM','CIM Web Service (RTHM) online · AID endpoint ready');
+log('MES','MES Navigator session open · SETUP/Repair queue empty');
+log('CCD','GZHL980 connected over USB · '+C.w+'×'+C.h+' · SDK ready');
+sdkLine('SDK ready. Type help() for commands.');
+requestAnimationFrame(loop);
+cycleLoop();streamLoop();
+})();
+</script>
+
+</body></html>
